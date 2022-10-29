@@ -1,6 +1,7 @@
 import torch
 import random
 import pathlib
+import torch.nn as nn
 
 from torch.utils.checkpoint import checkpoint
 
@@ -90,7 +91,7 @@ def load_model_workflow(i, e, add_name, base_path, device='cpu', eval_addition='
     #print(f'Loading {model_file}')
 
     model, c = load_model(base_path, model_file, device, eval_positions=[], verbose=False)
-
+    # c -> config_sample dictionary with training and hp information
     return model, c, results_file
 
 
@@ -159,6 +160,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
     def fit(self, X, y, overwrite_warning=False):
         # Check that X and y have correct shape
+        # also checks that y does not have np.nan or np.inf targets
         X, y = check_X_y(X, y, force_all_finite=False)
         # Store the classes seen during fit
         y = self._validate_targets(y)
@@ -177,7 +179,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         # Return the classifier
         return self
 
-    def predict_proba(self, X, normalize_with_test=False):
+    def predict_proba(self, X, y_test, normalize_with_test=False):
         # Check is fit had been called
         check_is_fitted(self)
 
@@ -188,27 +190,41 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         y_full = np.concatenate([self.y_, np.zeros_like(X[:, 0])], axis=0)
         y_full = torch.tensor(y_full, device=self.device).float().unsqueeze(1)
 
+        X_full.requires_grad = True
+
         eval_pos = self.X_.shape[0]
 
         prediction = transformer_predict(self.model[2], X_full, y_full, eval_pos,
                                          device=self.device,
                                          style=self.style,
                                          inference_mode=True,
-                                         preprocess_transform='none' if self.no_preprocess_mode else 'mix',
+                                         preprocess_transform='none',  # if self.no_preprocess_mode else 'mix',
                                          normalize_with_test=normalize_with_test,
                                          N_ensemble_configurations=self.N_ensemble_configurations,
                                          softmax_temperature=self.temperature,
                                          combine_preprocessing=self.combine_preprocessing,
                                          multiclass_decoder=self.multiclass_decoder,
                                          feature_shift_decoder=self.feature_shift_decoder,
-                                         differentiable_hps_as_style=self.differentiable_hps_as_style
-                                         , **get_params_from_config(self.c))
+                                         differentiable_hps_as_style=self.differentiable_hps_as_style,
+                                         y_test=y_test,
+                                         **get_params_from_config(self.c),
+                                         )
+
+        # loss_fn = nn.CrossEntropyLoss()
+        # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+        # pred = prediction.squeeze()
+        # loss = loss_fn(pred, y_test_tensor)
+        # loss.backward()
+
+        # lmdb = 0.1
+        # X_full += lmdb * X_full.data.grad
+
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
         return prediction_.detach().cpu().numpy()
 
-    def predict(self, X, return_winning_probability=False, normalize_with_test=False):
-        p = self.predict_proba(X, normalize_with_test=normalize_with_test)
+    def predict(self, X, y_test, return_winning_probability=False, normalize_with_test=False):
+        p = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
@@ -236,7 +252,9 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
                         differentiable_hps_as_style=False,
                         average_logits=True,
                         fp16_inference=False,
-                        normalize_with_sqrt=False, **kwargs):
+                        normalize_with_sqrt=False,
+                        y_test=None,
+                        **kwargs):
     """
 
     :param model:
@@ -333,7 +351,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         eval_xs = normalize_by_used_features_f(eval_xs, eval_xs.shape[-1], max_features,
                                                normalize_with_sqrt=normalize_with_sqrt)
 
-        return eval_xs.detach().to(device)
+        return eval_xs.detach().requires_grad_(True).to(device)
 
     eval_xs, eval_ys = eval_xs.to(device), eval_ys.to(device)
     eval_ys = eval_ys[:eval_position]
@@ -444,7 +462,9 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         outputs += [output_batch]
     #print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
 
-    outputs = torch.cat(outputs, 1)
+    # outputs = torch.cat(outputs, 1)
+    outputs = outputs[0]
+
     for i, ensemble_configuration in enumerate(ensemble_configurations):
         (class_shift_configuration, feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
         output_ = outputs[:, i:i+1, :]
@@ -460,6 +480,13 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         output = torch.nn.functional.softmax(output, dim=-1)
 
     output = torch.transpose(output, 0, 1)
+
+    import torch.nn as nn
+    loss_fn = nn.CrossEntropyLoss()
+    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+    pred = output.squeeze()
+    loss = loss_fn(pred, y_test_tensor)
+    loss.backward()
 
     return output
 
