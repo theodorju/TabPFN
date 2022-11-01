@@ -210,14 +210,19 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                          **get_params_from_config(self.c),
                                          )
 
-        # loss_fn = nn.CrossEntropyLoss()
-        # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-        # pred = prediction.squeeze()
-        # loss = loss_fn(pred, y_test_tensor)
-        # loss.backward()
+        loss_fn = nn.CrossEntropyLoss()
+        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+        pred = prediction.squeeze()
+        loss = loss_fn(pred, y_test_tensor)
 
-        # lmdb = 0.1
-        # X_full += lmdb * X_full.data.grad
+        from torchviz import make_dot
+        make_dot(pred, params=dict(list(self.model[2].named_parameters()))).render("named", format="png")
+        # import torch.autograd as autograd
+        # gradients = autograd.grad(loss, pred)
+        loss.backward()
+
+        lmdb = 0.1
+        X_full += lmdb * X_full.data.grad
 
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
@@ -444,7 +449,9 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     labels = torch.cat(labels, 1)
     labels = torch.split(labels, batch_size_inference, dim=1)
     #print('PREPROCESSING TIME', str(time.time() - start))
-    outputs = []
+    # outputs = []
+    outputs = torch.empty((50, 3, 3), dtype=torch.float32, requires_grad=True)
+
     start = time.time()
     for batch_input, batch_label in zip(inputs, labels):
         #preprocess_transform_ = preprocess_transform if styles_configuration % 2 == 0 else 'none'
@@ -459,15 +466,18 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
             else:
                 with torch.cuda.amp.autocast(enabled=fp16_inference):
                     output_batch = checkpoint(predict, batch_input, batch_label, style_, softmax_temperature_, True)
-        outputs += [output_batch]
+        # TODO: extremely intermediate solution, fix later
+        outputs = output_batch
     #print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
 
+    # TODO: intermediate change to for loop (suboptimal but maybe works as an quick fix)
     # outputs = torch.cat(outputs, 1)
-    outputs = outputs[0]
+    # outputs = outputs[0]
 
     for i, ensemble_configuration in enumerate(ensemble_configurations):
         (class_shift_configuration, feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
-        output_ = outputs[:, i:i+1, :]
+        # output_ = torch.empty_like(outputs[:, i:i+1, :], dtype=outputs[:, i:i+1, :].dtype, requires_grad=True)
+        output_ = outputs.clone()[:, i:i+1, :]
         output_ = torch.cat([output_[..., class_shift_configuration:],output_[..., :class_shift_configuration]],dim=-1)
 
         #output_ = predict(eval_xs, eval_ys, style_, preprocess_transform_)
@@ -481,12 +491,12 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
     output = torch.transpose(output, 0, 1)
 
-    import torch.nn as nn
-    loss_fn = nn.CrossEntropyLoss()
-    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-    pred = output.squeeze()
-    loss = loss_fn(pred, y_test_tensor)
-    loss.backward()
+    # import torch.nn as nn
+    # loss_fn = nn.CrossEntropyLoss()
+    # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+    # pred = output.squeeze()
+    # loss = loss_fn(pred, y_test_tensor)
+    # loss.backward()
 
     return output
 
