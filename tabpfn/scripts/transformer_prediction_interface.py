@@ -102,7 +102,6 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         # Model file specification (Model name, Epoch)
         i, e = i, -1
 
-
         model, c, results_file = load_model_workflow(i, e, add_name=model_string, base_path=base_path, device=device,
                                                      eval_addition='')
         #style, temperature = self.load_result_minimal(style_file, i, e)
@@ -197,7 +196,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         prediction = transformer_predict(self.model[2], X_full, y_full, eval_pos,
                                          device=self.device,
                                          style=self.style,
-                                         inference_mode=True,
+                                         inference_mode=False,
                                          preprocess_transform='none',  # if self.no_preprocess_mode else 'mix',
                                          normalize_with_test=normalize_with_test,
                                          N_ensemble_configurations=self.N_ensemble_configurations,
@@ -209,20 +208,20 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                          y_test=y_test,
                                          **get_params_from_config(self.c),
                                          )
+        # import torch.nn as nn
+        # loss_fn = nn.CrossEntropyLoss()
+        # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+        # pred = prediction.squeeze()
+        # loss = loss_fn(pred, y_test_tensor)
 
-        loss_fn = nn.CrossEntropyLoss()
-        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-        pred = prediction.squeeze()
-        loss = loss_fn(pred, y_test_tensor)
+        # from torchviz import make_dot
+        # make_dot(pred, params=dict(list(self.model[2].named_parameters()))).render("corrected_2", format="png")
 
-        from torchviz import make_dot
-        make_dot(pred, params=dict(list(self.model[2].named_parameters()))).render("named", format="png")
-        # import torch.autograd as autograd
-        # gradients = autograd.grad(loss, pred)
-        loss.backward()
-
-        lmdb = 0.1
-        X_full += lmdb * X_full.data.grad
+        # loss.backward()
+        #
+        #
+        # lmdb = 0.1
+        # X_full += lmdb * X_full.data.grad
 
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
@@ -286,6 +285,10 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     :return:
     """
     num_classes = len(torch.unique(eval_ys))
+    eval_xs.requires_grad_(True)
+
+    eval_xs.mean().backward();
+    print('grad', eval_xs.grad)
 
     def predict(eval_xs, eval_ys, used_style, softmax_temperature, return_logits):
         # Initialize results array size S, B, Classes
@@ -293,21 +296,22 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         inference_mode_call = torch.inference_mode() if inference_mode else NOP()
         with inference_mode_call:
             start = time.time()
+            model.requires_grad_(False)
             output = model(
-                    (used_style.repeat(eval_xs.shape[1], 1) if used_style is not None else None, eval_xs, eval_ys.float()),
-                    single_eval_pos=eval_position)[:, :, 0:num_classes]
+                (used_style.repeat(eval_xs.shape[1], 1) if used_style is not None else None, eval_xs, eval_ys.float()),
+                single_eval_pos=eval_position)[:, :, 0:num_classes]
 
             output = output[:, :, 0:num_classes] / torch.exp(softmax_temperature)
             if not return_logits:
                 output = torch.nn.functional.softmax(output, dim=-1)
-            #else:
+            # else:
             #    output[:, :, 1] = model((style.repeat(eval_xs.shape[1], 1) if style is not None else None, eval_xs, eval_ys.float()),
             #               single_eval_pos=eval_position)
 
             #    output[:, :, 1] = torch.sigmoid(output[:, :, 1]).squeeze(-1)
             #    output[:, :, 0] = 1 - output[:, :, 1]
 
-        #print('RESULTS', eval_ys.shape, torch.unique(eval_ys, return_counts=True), output.mean(axis=0))
+        # print('RESULTS', eval_ys.shape, torch.unique(eval_ys, return_counts=True), output.mean(axis=0))
 
         return output
 
@@ -351,7 +355,9 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         eval_xs = eval_xs.unsqueeze(1)
 
         # TODO: Cautian there is information leakage when to_ranking is used, we should not use it
-        eval_xs = remove_outliers(eval_xs, normalize_positions=-1 if normalize_with_test else eval_position) if not normalize_to_ranking else normalize_data(to_ranking_low_mem(eval_xs))
+        eval_xs = remove_outliers(eval_xs,
+                                  normalize_positions=-1 if normalize_with_test else eval_position) if not normalize_to_ranking else normalize_data(
+            to_ranking_low_mem(eval_xs))
         # Rescale X
         eval_xs = normalize_by_used_features_f(eval_xs, eval_xs.shape[-1], max_features,
                                                normalize_with_sqrt=normalize_with_sqrt)
@@ -381,27 +387,31 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         softmax_temperature = torch.log(torch.tensor([0.8]))
 
     styles_configurations = range(0, num_styles)
+
     def get_preprocess(i):
         if i == 0:
             return 'power_all'
-#            if i == 1:
-#                return 'robust_all'
+        #            if i == 1:
+        #                return 'robust_all'
         if i == 1:
             return 'none'
 
-    preprocess_transform_configurations = ['none', 'power_all'] if preprocess_transform == 'mix' else [preprocess_transform]
+    preprocess_transform_configurations = ['none', 'power_all'] if preprocess_transform == 'mix' else [
+        preprocess_transform]
 
     feature_shift_configurations = torch.randperm(eval_xs.shape[2]) if feature_shift_decoder else [0]
-    class_shift_configurations = torch.randperm(len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
+    class_shift_configurations = torch.randperm(
+        len(torch.unique(eval_ys))) if multiclass_decoder == 'permutation' else [0]
 
     ensemble_configurations = list(itertools.product(class_shift_configurations, feature_shift_configurations))
-    #default_ensemble_config = ensemble_configurations[0]
+    # default_ensemble_config = ensemble_configurations[0]
 
     rng = random.Random(0)
     rng.shuffle(ensemble_configurations)
-    ensemble_configurations = list(itertools.product(ensemble_configurations, preprocess_transform_configurations, styles_configurations))
+    ensemble_configurations = list(
+        itertools.product(ensemble_configurations, preprocess_transform_configurations, styles_configurations))
     ensemble_configurations = ensemble_configurations[0:N_ensemble_configurations]
-    #if N_ensemble_configurations == 1:
+    # if N_ensemble_configurations == 1:
     #    ensemble_configurations = [default_ensemble_config]
 
     output = None
@@ -410,9 +420,10 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     inputs, labels = [], []
     start = time.time()
     for ensemble_configuration in ensemble_configurations:
-        (class_shift_configuration, feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
+        (class_shift_configuration,
+         feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
 
-        style_ = style[styles_configuration:styles_configuration+1, :] if style is not None else style
+        style_ = style[styles_configuration:styles_configuration + 1, :] if style is not None else style
         softmax_temperature_ = softmax_temperature[styles_configuration]
 
         eval_xs_, eval_ys_ = eval_xs.clone(), eval_ys.clone()
@@ -422,19 +433,21 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         else:
             if eval_xs_.shape[-1] * 3 < max_features and combine_preprocessing:
                 eval_xs_ = torch.cat([preprocess_input(eval_xs_, preprocess_transform='power_all'),
-                            preprocess_input(eval_xs_, preprocess_transform='quantile_all')], -1)
+                                      preprocess_input(eval_xs_, preprocess_transform='quantile_all')], -1)
                 eval_xs_ = normalize_data(eval_xs_, normalize_positions=-1 if normalize_with_test else eval_position)
-                #eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all'),
+                # eval_xs_ = torch.stack([preprocess_input(eval_xs_, preprocess_transform='power_all'),
                 #                        preprocess_input(eval_xs_, preprocess_transform='robust_all'),
                 #                        preprocess_input(eval_xs_, preprocess_transform='none')], -1)
-                #eval_xs_ = torch.flatten(torch.swapaxes(eval_xs_, -2, -1), -2)
+                # eval_xs_ = torch.flatten(torch.swapaxes(eval_xs_, -2, -1), -2)
             else:
+                # TODO: z_norm, power transform (not necessary as a first step)
                 eval_xs_ = preprocess_input(eval_xs_, preprocess_transform=preprocess_transform_configuration)
             eval_xs_transformed[preprocess_transform_configuration] = eval_xs_
 
         eval_ys_ = ((eval_ys_ + class_shift_configuration) % num_classes).float()
 
-        eval_xs_ = torch.cat([eval_xs_[..., feature_shift_configuration:],eval_xs_[..., :feature_shift_configuration]],dim=-1)
+        eval_xs_ = torch.cat([eval_xs_[..., feature_shift_configuration:], eval_xs_[..., :feature_shift_configuration]],
+                             dim=-1)
 
         # Extend X
         if extend_features:
@@ -445,16 +458,15 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         labels += [eval_ys_]
 
     inputs = torch.cat(inputs, 1)
+    # inputs.mean().backward();print('grad',eval_xs.grad[0])
     inputs = torch.split(inputs, batch_size_inference, dim=1)
     labels = torch.cat(labels, 1)
     labels = torch.split(labels, batch_size_inference, dim=1)
-    #print('PREPROCESSING TIME', str(time.time() - start))
-    # outputs = []
-    outputs = torch.empty((50, 3, 3), dtype=torch.float32, requires_grad=True)
-
+    # print('PREPROCESSING TIME', str(time.time() - start))
+    outputs = []
     start = time.time()
     for batch_input, batch_label in zip(inputs, labels):
-        #preprocess_transform_ = preprocess_transform if styles_configuration % 2 == 0 else 'none'
+        # preprocess_transform_ = preprocess_transform if styles_configuration % 2 == 0 else 'none'
         import warnings
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore",
@@ -462,25 +474,25 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
             warnings.filterwarnings("ignore",
                                     message="torch.cuda.amp.autocast only affects CUDA ops, but CUDA is not available.  Disabling.")
             if device == 'cpu':
-                output_batch = checkpoint(predict, batch_input, batch_label, style_, softmax_temperature_, True)
+                output_batch = predict(batch_input, batch_label, style_, softmax_temperature_, True)
             else:
                 with torch.cuda.amp.autocast(enabled=fp16_inference):
                     output_batch = checkpoint(predict, batch_input, batch_label, style_, softmax_temperature_, True)
-        # TODO: extremely intermediate solution, fix later
-        outputs = output_batch
-    #print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
+        outputs += [output_batch]
+    # print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
 
-    # TODO: intermediate change to for loop (suboptimal but maybe works as an quick fix)
-    # outputs = torch.cat(outputs, 1)
-    # outputs = outputs[0]
-
+    # outputs1 = torch.cat(outputs, 1)
+    # TODO: Add assert
+    outputs = outputs[0]
+    # output.mean(); print("grad", eval_xs.grad)
     for i, ensemble_configuration in enumerate(ensemble_configurations):
-        (class_shift_configuration, feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
-        # output_ = torch.empty_like(outputs[:, i:i+1, :], dtype=outputs[:, i:i+1, :].dtype, requires_grad=True)
-        output_ = outputs.clone()[:, i:i+1, :]
-        output_ = torch.cat([output_[..., class_shift_configuration:],output_[..., :class_shift_configuration]],dim=-1)
+        (class_shift_configuration,
+         feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
+        output_ = outputs[:, i:i + 1, :]
+        output_ = torch.cat([output_[..., class_shift_configuration:], output_[..., :class_shift_configuration]],
+                            dim=-1)
 
-        #output_ = predict(eval_xs, eval_ys, style_, preprocess_transform_)
+        # output_ = predict(eval_xs, eval_ys, style_, preprocess_transform_)
         if not average_logits:
             output_ = torch.nn.functional.softmax(output_, dim=-1)
         output = output_ if output is None else output + output_
@@ -491,14 +503,21 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
     output = torch.transpose(output, 0, 1)
 
-    # import torch.nn as nn
-    # loss_fn = nn.CrossEntropyLoss()
-    # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-    # pred = output.squeeze()
-    # loss = loss_fn(pred, y_test_tensor)
-    # loss.backward()
+    import torch.nn as nn
+    loss_fn = nn.CrossEntropyLoss()
+    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+    pred = output.squeeze()
+    loss = loss_fn(pred.log(), y_test_tensor)
+
+    # output.mean(); print('grad', eval_xs.grad[0])
+
+    loss.backward();
+    print('grad', eval_xs.grad[0])
+
+    print('HERE')
 
     return output
+
 
 def get_params_from_config(c):
     return {'max_features': c['num_features']
