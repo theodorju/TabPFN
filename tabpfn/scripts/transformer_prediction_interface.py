@@ -287,8 +287,8 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     num_classes = len(torch.unique(eval_ys))
     eval_xs.requires_grad_(True)
 
-    eval_xs.mean().backward();
-    print('grad', eval_xs.grad)
+    #eval_xs.mean().backward();
+    #print('grad', eval_xs.grad)
 
     def predict(eval_xs, eval_ys, used_style, softmax_temperature, return_logits):
         # Initialize results array size S, B, Classes
@@ -481,7 +481,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         outputs += [output_batch]
     # print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
 
-    # outputs1 = torch.cat(outputs, 1)
+    outputs = torch.cat(outputs, 1)
     # TODO: Add assert
     outputs = outputs[0]
     # output.mean(); print("grad", eval_xs.grad)
@@ -511,7 +511,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
 
     # output.mean(); print('grad', eval_xs.grad[0])
 
-    loss.backward();
+    loss.backward()
     print('grad', eval_xs.grad[0])
 
     print('HERE')
