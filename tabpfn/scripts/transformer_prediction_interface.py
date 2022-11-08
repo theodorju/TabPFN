@@ -205,35 +205,29 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                          multiclass_decoder=self.multiclass_decoder,
                                          feature_shift_decoder=self.feature_shift_decoder,
                                          differentiable_hps_as_style=self.differentiable_hps_as_style,
-                                         y_test=y_test,
                                          **get_params_from_config(self.c),
                                          )
-        # import torch.nn as nn
-        # loss_fn = nn.CrossEntropyLoss()
-        # y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-        # pred = prediction.squeeze()
-        # loss = loss_fn(pred, y_test_tensor)
+        import torch.nn as nn
+        loss_fn = nn.CrossEntropyLoss()
+        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+        pred = prediction.squeeze()
+        loss = loss_fn(pred, y_test_tensor)
 
-        # from torchviz import make_dot
-        # make_dot(pred, params=dict(list(self.model[2].named_parameters()))).render("corrected_2", format="png")
 
-        # loss.backward()
-        #
-        #
-        # lmdb = 0.1
-        # X_full += lmdb * X_full.data.grad
+        loss.backward()
+
 
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
-        return prediction_.detach().cpu().numpy()
+        return prediction_.detach().cpu().numpy(), X_full
 
     def predict(self, X, y_test, return_winning_probability=False, normalize_with_test=False):
-        p = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
+        p, x = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
-            return y, p.max(axis=-1)
-        return y
+            return y, p.max(axis=-1), x
+        return y, x
 
 import time
 def transformer_predict(model, eval_xs, eval_ys, eval_position,
@@ -499,20 +493,6 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         output = torch.nn.functional.softmax(output, dim=-1)
 
     output = torch.transpose(output, 0, 1)
-
-    import torch.nn as nn
-    loss_fn = nn.CrossEntropyLoss()
-    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-    pred = output.squeeze()
-    loss = loss_fn(pred.log(), y_test_tensor)
-
-    # output.mean(); print('grad', eval_xs.grad[0])
-
-    loss.backward()
-    print('grad', eval_xs.grad[0])
-
-    print('HERE')
-
     return output
 
 
