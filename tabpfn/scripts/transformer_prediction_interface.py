@@ -482,9 +482,6 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
     # print('MODEL INFERENCE TIME ('+str(batch_input.device)+' vs '+device+', '+str(fp16_inference)+')', str(time.time()-start))
 
     outputs = torch.cat(outputs, 1)
-    # TODO: Add assert
-    outputs = outputs[0]
-    # output.mean(); print("grad", eval_xs.grad)
     for i, ensemble_configuration in enumerate(ensemble_configurations):
         (class_shift_configuration,
          feature_shift_configuration), preprocess_transform_configuration, styles_configuration = ensemble_configuration
