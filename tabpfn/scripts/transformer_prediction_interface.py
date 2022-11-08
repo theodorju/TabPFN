@@ -362,7 +362,7 @@ def transformer_predict(model, eval_xs, eval_ys, eval_position,
         eval_xs = normalize_by_used_features_f(eval_xs, eval_xs.shape[-1], max_features,
                                                normalize_with_sqrt=normalize_with_sqrt)
 
-        return eval_xs.detach().requires_grad_(True).to(device)
+        return eval_xs #.detach().requires_grad_(True).to(device)
 
     eval_xs, eval_ys = eval_xs.to(device), eval_ys.to(device)
     eval_ys = eval_ys[:eval_position]
