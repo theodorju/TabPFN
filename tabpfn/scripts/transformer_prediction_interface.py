@@ -2,6 +2,7 @@ import torch
 import random
 import pathlib
 import torch.nn as nn
+import torch.optim as optim
 
 from torch.utils.checkpoint import checkpoint
 
@@ -211,8 +212,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         loss_fn = nn.CrossEntropyLoss()
         y_test_tensor = torch.tensor(y_test, dtype=torch.long)
         pred = prediction.squeeze()
-        loss = loss_fn(pred, y_test_tensor)
-
+        loss = -1 * loss_fn(pred, y_test_tensor)
 
         loss.backward()
 
@@ -221,8 +221,63 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
         return prediction_.detach().cpu().numpy(), X_full
 
+    def predict_proba_attack(self, X, y_test, normalize_with_test=False):
+        # Check is fit had been called
+        check_is_fitted(self)
+
+        # Input validation
+        X = check_array(X, force_all_finite=False)
+        X_full = np.concatenate([self.X_, X], axis=0)
+        X_full = torch.tensor(X_full, device=self.device).float().unsqueeze(1)
+        y_full = np.concatenate([self.y_, np.zeros_like(X[:, 0])], axis=0)
+        y_full = torch.tensor(y_full, device=self.device).float().unsqueeze(1)
+
+        X_full.requires_grad = True
+
+        # debug
+        X_full_debug = X_full.clone()
+
+        optimizer = optim.SGD([X_full], lr=0.1)
+
+        eval_pos = self.X_.shape[0]
+
+        num_steps = 100
+        from tqdm import tqdm
+        for _ in tqdm(range(num_steps)):
+
+            optimizer.zero_grad()
+
+            prediction = transformer_predict(self.model[2], X_full, y_full, eval_pos,
+                                             device=self.device,
+                                             style=self.style,
+                                             inference_mode=False,
+                                             preprocess_transform='none',  # if self.no_preprocess_mode else 'mix',
+                                             normalize_with_test=normalize_with_test,
+                                             N_ensemble_configurations=self.N_ensemble_configurations,
+                                             softmax_temperature=self.temperature,
+                                             combine_preprocessing=self.combine_preprocessing,
+                                             multiclass_decoder=self.multiclass_decoder,
+                                             feature_shift_decoder=self.feature_shift_decoder,
+                                             differentiable_hps_as_style=self.differentiable_hps_as_style,
+                                             **get_params_from_config(self.c),
+                                             )
+
+            loss_fn = nn.CrossEntropyLoss()
+            y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+            pred = prediction.squeeze()
+            loss = -1 * loss_fn(pred, y_test_tensor)
+
+            loss.backward()
+            optimizer.step()
+
+            prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
+
+        print(torch.all(X_full == X_full_debug))
+
+        return prediction_.detach().cpu().numpy(), X_full
+
     def predict(self, X, y_test, return_winning_probability=False, normalize_with_test=False):
-        p, x = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
+        p, x = self.predict_proba_attack(X, y_test, normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
