@@ -212,10 +212,9 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         loss_fn = nn.CrossEntropyLoss()
         y_test_tensor = torch.tensor(y_test, dtype=torch.long)
         pred = prediction.squeeze()
-        loss = -1 * loss_fn(pred, y_test_tensor)
+        loss = loss_fn(pred, y_test_tensor)
 
         loss.backward()
-
 
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
@@ -272,12 +271,10 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
             prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
-        print(torch.all(X_full == X_full_debug))
-
         return prediction_.detach().cpu().numpy(), X_full
 
     def predict(self, X, y_test, return_winning_probability=False, normalize_with_test=False):
-        p, x = self.predict_proba_attack(X, y_test, normalize_with_test=normalize_with_test)
+        p, x = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
