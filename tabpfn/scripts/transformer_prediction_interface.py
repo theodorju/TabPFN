@@ -226,23 +226,32 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
         # Input validation
         X = check_array(X, force_all_finite=False)
-        X_full = np.concatenate([self.X_, X], axis=0)
-        X_full = torch.tensor(X_full, device=self.device).float().unsqueeze(1)
+        # Convert to tensors
+        X_train_tensor = torch.from_numpy(self.X_).to(self.device)
+        X_test_tensor = torch.from_numpy(X).to(self.device)
+
+        # Activate gradient
+        X_train_tensor.requires_grad = True
+        X_test_tensor.requires_grad = True
+
+        # Instantiate optimizer
+        optimizer = optim.SGD([X_test_tensor], lr=.1)
+
+        # Loss function
+        loss_fn = nn.CrossEntropyLoss()
+
+        # Concatenate
+        X_full = torch.concat([X_train_tensor, X_test_tensor], axis=0).float().unsqueeze(1)
+
+        # X_full = torch.tensor(X_full, device=self.device).float().unsqueeze(1)
         y_full = np.concatenate([self.y_, np.zeros_like(X[:, 0])], axis=0)
         y_full = torch.tensor(y_full, device=self.device).float().unsqueeze(1)
 
-        X_full.requires_grad = True
-
-        # debug
-        X_full_debug = X_full.clone()
-
-        optimizer = optim.SGD([X_full], lr=0.1)
-
         eval_pos = self.X_.shape[0]
 
-        num_steps = 100
-        from tqdm import tqdm
-        for _ in tqdm(range(num_steps)):
+        num_steps = 250
+
+        for step in range(1, num_steps + 1):
 
             optimizer.zero_grad()
 
@@ -261,10 +270,12 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                              **get_params_from_config(self.c),
                                              )
 
-            loss_fn = nn.CrossEntropyLoss()
             y_test_tensor = torch.tensor(y_test, dtype=torch.long)
             pred = prediction.squeeze()
             loss = -1 * loss_fn(pred, y_test_tensor)
+
+            if step % 10 == 0:
+                print(f"Loss: {loss.item()}")
 
             loss.backward()
             optimizer.step()
