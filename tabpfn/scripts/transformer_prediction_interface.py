@@ -2,7 +2,6 @@ import torch
 import random
 import pathlib
 import torch.nn as nn
-import torch.optim as optim
 
 from torch.utils.checkpoint import checkpoint
 
@@ -220,40 +219,39 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
         return prediction_.detach().cpu().numpy(), X_full
 
-    def predict_proba_attack(self, X, y_test, normalize_with_test=False):
+    def predict_proba_attack(self, X, y_test, optimizer, lr, num_steps=250, normalize_with_test=False):
         # Check is fit had been called
         check_is_fitted(self)
-
         # Input validation
         X = check_array(X, force_all_finite=False)
         # Convert to tensors
-        X_train_tensor = torch.from_numpy(self.X_).to(self.device)
-        X_test_tensor = torch.from_numpy(X).to(self.device)
+        X_train_tensor = torch.from_numpy(self.X_).to(self.device).float()
+        X_test_tensor = torch.from_numpy(X).to(self.device).float()
 
         # Activate gradient
         X_train_tensor.requires_grad = True
         X_test_tensor.requires_grad = True
 
         # Instantiate optimizer
-        optimizer = optim.SGD([X_test_tensor], lr=.1)
+        optim = optimizer([X_test_tensor], lr=0.1, maximize=True)
+        print('Applying adversarial attack:'
+              '\n \t Optimizer: {}'
+              '\n \t Learning Rate: {}'
+              '\n \t Number of steps: {}'.format(type(optim).__name__, lr, num_steps))
 
         # Loss function
         loss_fn = nn.CrossEntropyLoss()
 
         # Concatenate
         X_full = torch.concat([X_train_tensor, X_test_tensor], axis=0).float().unsqueeze(1)
-
-        # X_full = torch.tensor(X_full, device=self.device).float().unsqueeze(1)
         y_full = np.concatenate([self.y_, np.zeros_like(X[:, 0])], axis=0)
         y_full = torch.tensor(y_full, device=self.device).float().unsqueeze(1)
 
         eval_pos = self.X_.shape[0]
 
-        num_steps = 250
+        for step in range(0, num_steps + 1):
 
-        for step in range(1, num_steps + 1):
-
-            optimizer.zero_grad()
+            optim.zero_grad()
 
             prediction = transformer_predict(self.model[2], X_full, y_full, eval_pos,
                                              device=self.device,
@@ -272,20 +270,24 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
             y_test_tensor = torch.tensor(y_test, dtype=torch.long)
             pred = prediction.squeeze()
-            loss = -1 * loss_fn(pred, y_test_tensor)
+            loss = loss_fn(pred, y_test_tensor)
 
             if step % 10 == 0:
                 print(f"Loss: {loss.item()}")
 
             loss.backward()
-            optimizer.step()
+            optim.step()
+
+            X_full = torch.concat([X_train_tensor, X_test_tensor], axis=0).float().unsqueeze(1)
 
             prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
         return prediction_.detach().cpu().numpy(), X_full
 
-    def predict(self, X, y_test, return_winning_probability=False, normalize_with_test=False):
-        p, x = self.predict_proba(X, y_test, normalize_with_test=normalize_with_test)
+    def predict(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False, \
+                normalize_with_test=False):
+        p, x = self.predict_proba_attack(X, y_test, optimizer=optimizer, lr=lr, num_steps=num_steps,
+                                         normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
