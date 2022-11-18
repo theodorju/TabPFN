@@ -282,17 +282,17 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
             prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
-        return prediction_.detach().cpu().numpy(), X_full
+        return prediction_.detach().cpu().numpy(), X_full, X_test_tensor
 
-    def predict(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False, \
+    def predict(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
                 normalize_with_test=False):
-        p, x = self.predict_proba_attack(X, y_test, optimizer=optimizer, lr=lr, num_steps=num_steps,
-                                         normalize_with_test=normalize_with_test)
+        p, x_full, x_test = self.predict_proba_attack(X, y_test, optimizer=optimizer, lr=lr, num_steps=num_steps,
+                                                      normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
         if return_winning_probability:
-            return y, p.max(axis=-1), x
-        return y, x
+            return y, p.max(axis=-1), x_full, x_test
+        return y, x_full, x_test
 
 import time
 def transformer_predict(model, eval_xs, eval_ys, eval_position,

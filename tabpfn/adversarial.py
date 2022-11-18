@@ -38,7 +38,7 @@ class AdversarialTabPFN:
         classifier = TabPFNClassifier(device='cpu')
         classifier.fit(X_train, y_train)
 
-        y_eval_before, p_eval_before, X_full_with_grad = \
+        y_eval_before, p_eval_before, X_full_with_grad, X_test_tensor = \
             classifier.predict(X_test, y_test,
                                optimizer=self.optimizer,
                                lr=self.lr,
@@ -48,6 +48,8 @@ class AdversarialTabPFN:
 
         acc = accuracy_score(y_test, y_eval_before)
         print(f"Accuracy: {acc}")
+
+        return acc, X_train, X_test_tensor.detach().numpy(), X_test_clean, y_train, y_test
 
     def load_dataset(self, dataset_fn=None, X=None, y=None):
         # load dataset
