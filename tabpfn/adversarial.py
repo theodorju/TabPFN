@@ -13,7 +13,7 @@ class AdversarialTabPFN:
             datasets_fn=None,
             lr=0.1,
             random_state=42,
-            test_percentage=0.45,
+            test_percentage=0.2,
             optimizer=optim.Adam,
             num_steps=250
     ):
@@ -37,14 +37,18 @@ class AdversarialTabPFN:
 
         classifier = TabPFNClassifier(device='cpu')
         classifier.fit(X_train, y_train)
+        y_eval, p_eval = classifier.predict(X_test, return_winning_probability=True)
+
+        before_acc = accuracy_score(y_test, y_eval)
+        print(f"Accuracy: {before_acc}")
 
         y_eval_before, p_eval_before, X_full_with_grad, X_test_tensor = \
-            classifier.predict(X_test, y_test,
-                               optimizer=self.optimizer,
-                               lr=self.lr,
-                               num_steps=self.num_steps,
-                               return_winning_probability=True
-                               )
+            classifier.predict_attack(X_test, y_test,
+                                      optimizer=self.optimizer,
+                                      lr=self.lr,
+                                      num_steps=self.num_steps,
+                                      return_winning_probability=True
+                                      )
 
         acc = accuracy_score(y_test, y_eval_before)
         print(f"Accuracy: {acc}")
@@ -63,8 +67,3 @@ class AdversarialTabPFN:
         X_test_clean = X_test.copy()
 
         return X_train, X_test, X_test_clean, y_train, y_test
-
-
-optim = optim.Adam
-adv = AdversarialTabPFN(datasets_fn=load_iris, optimizer=optim, num_steps=10)
-adv.adversarial_attack()

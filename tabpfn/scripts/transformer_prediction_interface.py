@@ -178,7 +178,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         # Return the classifier
         return self
 
-    def predict_proba(self, X, y_test, normalize_with_test=False):
+    def predict_proba(self, X, normalize_with_test=False):
         # Check is fit had been called
         check_is_fitted(self)
 
@@ -207,13 +207,6 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
                                          differentiable_hps_as_style=self.differentiable_hps_as_style,
                                          **get_params_from_config(self.c),
                                          )
-        import torch.nn as nn
-        loss_fn = nn.CrossEntropyLoss()
-        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-        pred = prediction.squeeze()
-        loss = loss_fn(pred, y_test_tensor)
-
-        loss.backward()
 
         prediction_, y_ = prediction.squeeze(0), y_full.squeeze(1).long()[eval_pos:]
 
@@ -233,7 +226,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         X_test_tensor.requires_grad = True
 
         # Instantiate optimizer
-        optim = optimizer([X_test_tensor], lr=0.1, maximize=True)
+        optim = optimizer([X_test_tensor], lr=lr, maximize=True)
         print('Applying adversarial attack:'
               '\n \t Optimizer: {}'
               '\n \t Learning Rate: {}'
@@ -284,7 +277,7 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
         return prediction_.detach().cpu().numpy(), X_full, X_test_tensor
 
-    def predict(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
+    def predict_attack(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
                 normalize_with_test=False):
         p, x_full, x_test = self.predict_proba_attack(X, y_test, optimizer=optimizer, lr=lr, num_steps=num_steps,
                                                       normalize_with_test=normalize_with_test)
@@ -293,6 +286,14 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         if return_winning_probability:
             return y, p.max(axis=-1), x_full, x_test
         return y, x_full, x_test
+
+    def predict(self, X, return_winning_probability=False, normalize_with_test=False):
+        p, x_full = self.predict_proba(X, normalize_with_test=normalize_with_test)
+        y = np.argmax(p, axis=-1)
+        y = self.classes_.take(np.asarray(y, dtype=np.intp))
+        if return_winning_probability:
+            return y, p.max(axis=-1)
+        return y
 
 import time
 def transformer_predict(model, eval_xs, eval_ys, eval_position,
