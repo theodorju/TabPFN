@@ -189,8 +189,6 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         y_full = np.concatenate([self.y_, np.zeros_like(X[:, 0])], axis=0)
         y_full = torch.tensor(y_full, device=self.device).float().unsqueeze(1)
 
-        X_full.requires_grad = True
-
         eval_pos = self.X_.shape[0]
 
         prediction = transformer_predict(self.model[2], X_full, y_full, eval_pos,
@@ -213,6 +211,9 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
         return prediction_.detach().cpu().numpy(), X_full
 
     def predict_proba_attack(self, X, y_test, optimizer, lr, num_steps=250, normalize_with_test=False):
+        """
+        AutoML Lab Team Override
+        """
         # Check is fit had been called
         check_is_fitted(self)
         # Input validation
@@ -279,13 +280,17 @@ class TabPFNClassifier(BaseEstimator, ClassifierMixin):
 
     def predict_attack(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
                 normalize_with_test=False):
+        """
+        AutoML Lab Team Override
+        """
+
+        # Perform adversarial attack and predict
         p, x_full, x_test = self.predict_proba_attack(X, y_test, optimizer=optimizer, lr=lr, num_steps=num_steps,
                                                       normalize_with_test=normalize_with_test)
         y = np.argmax(p, axis=-1)
         y = self.classes_.take(np.asarray(y, dtype=np.intp))
-        if return_winning_probability:
-            return y, p.max(axis=-1), x_full, x_test
-        return y, x_full, x_test
+
+        return (y, p.max(axis=-1), x_full, x_test) if return_winning_probability else (y, x_full, x_test)
 
     def predict(self, X, return_winning_probability=False, normalize_with_test=False):
         p, x_full = self.predict_proba(X, normalize_with_test=normalize_with_test)
