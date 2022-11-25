@@ -1,18 +1,18 @@
 import os
 import numpy as np
 import pandas as pd
-
+import argparse
 from tabpfn.adversarial.adversarial import *
 from sklearn.datasets import *
 
 
-def adversarial_sklearn_datasets(datasets_fn):
+def adversarial_sklearn_datasets(datasets_fn, lr, num_steps):
 
     for dataset_fn in datasets_fn:
 
         dataset_name = "_".join(dataset_fn.__name__.split("_")[1:])
 
-        adv = AdversarialTabPFN(datasets_fn=dataset_fn, num_steps=2, lr=0.005)
+        adv = AdversarialTabPFN(datasets_fn=dataset_fn, lr=lr, num_steps=num_steps)
         acc, X_train, X_test, X_test_clean, y_train, y_test = adv.adversarial_attack()
 
         path_exists = os.path.exists("data")
@@ -40,5 +40,25 @@ def adversarial_sklearn_datasets(datasets_fn):
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-lr",
+        "--learning_rate",
+        type=float,
+        default=0.01
+    )
+
+    parser.add_argument(
+        "-s",
+        "--steps",
+        type=int,
+        default=5
+    )
+
+    args = parser.parse_args()
+    lr, num_steps = args.learning_rate, args.steps
+
     ds = [load_breast_cancer]
-    adversarial_sklearn_datasets(ds)
+    adversarial_sklearn_datasets(ds, lr, num_steps)

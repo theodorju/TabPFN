@@ -76,7 +76,7 @@ class AdversarialTabPFN:
         return acc, X_train, X_test_tensor.detach().numpy(), X_test_clean, y_train, y_test
 
     def load_dataset(self, dataset_fn=None, X=None, y=None):
-        # If an sklearn type dataset is specified
+        # If a sklearn type dataset is specified
         if dataset_fn:
             # Populate X, y
             X, y = dataset_fn(return_X_y=True)
