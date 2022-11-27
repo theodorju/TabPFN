@@ -18,24 +18,32 @@ lr = 0.0025
 
 def run_comparisson(dataset_fn=None, X=None, y=None, dataset_name=None, models=None):
 
-    # parse dataset name
-    if dataset_fn is not None:
-        dataset_name = "_".join(dataset_fn.__name__.split("_")[1:])
-
+    # Setup adversarial attack
     adv = AdversarialTabPFN(dataset_fn=dataset_fn,
                             optimizer=optim,
                             num_steps=24,
                             lr=lr,
-                            save_results=True)
+                            save_results=True,
+                            X_full=X,
+                            y_full=y,
+                            dataset_name=dataset_name)
 
+    # Perform attack on TabPFN, return train and clean test set, modified test set, train and test labels
+    # the train test split is performed internally in the adversarial_attack() method
     X_train, X_test, X_test_clean, y_train, y_test = adv.adversarial_attack()
 
+    # Load results file, generated automatically during TabPFN adversarial attack
     results_file_path = f'../results/{dataset_name}_results_{lr}.pkl'
+
     with open(results_file_path, 'rb') as f:
         results = pickle.load(f)
 
+    # Loop over the modified test sets generated during TabPFN adversarial attacks and perform comparisons
     for i, X_attacked in enumerate(results['tabPFN']['X_test']):
+
+        # For the first iteration fit models and predict on the unmodified test set
         if i == 0:
+
             if models in ("askl", "all"):
                 # Fit Autosklearn
                 askl2_model = autosklearn.classification.AutoSklearnClassifier(time_left_for_this_task=60)
@@ -78,7 +86,12 @@ def run_comparisson(dataset_fn=None, X=None, y=None, dataset_name=None, models=N
                 mlp_acc = accuracy_score(y_test, mlp_preds)
                 results["mlp"]['accuracy'].append(mlp_acc)
 
+        # for all subsequent iterations, use the already fitted models and only perform predictions in the modified
+        # test sets.
+        # Note that the test have been modified by adversarial attacks (gradient ascent) on TabPFN, not on each
+        # individual model used here only for predictions.
         else:
+
             if models in ("askl", "all"):
                 # predict Autosklearn on attacked X
                 askl2_preds_modified = askl2_model.predict(X_attacked)
