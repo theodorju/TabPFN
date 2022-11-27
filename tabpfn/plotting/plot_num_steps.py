@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.datasets import *
 from sklearn.neural_network import MLPClassifier
 from autogluon.tabular import TabularPredictor
-from tabpfn.adversarial.adversarial import AdversarialTabPFN
+from tabpfn.adversarial.adversarial import AdversarialTabPFNInterface
 
 optim = optim.Adam
 datasets_fn = [load_iris]
@@ -18,15 +18,17 @@ lr = 0.0025
 
 def run_comparisson(dataset_fn=None, X=None, y=None, dataset_name=None, models=None):
 
+    dataset_name = dataset_name if dataset_fn is None else "_".join(dataset_fn.__name__.split("_")[1:])
+
     # Setup adversarial attack
-    adv = AdversarialTabPFN(dataset_fn=dataset_fn,
-                            optimizer=optim,
-                            num_steps=24,
-                            lr=lr,
-                            save_results=True,
-                            X_full=X,
-                            y_full=y,
-                            dataset_name=dataset_name)
+    adv = AdversarialTabPFNInterface(dataset_fn=dataset_fn,
+                                     optimizer=optim,
+                                     num_steps=24,
+                                     lr=lr,
+                                     save_results=True,
+                                     X_full=X,
+                                     y_full=y,
+                                     dataset_name=dataset_name)
 
     # Perform attack on TabPFN, return train and clean test set, modified test set, train and test labels
     # the train test split is performed internally in the adversarial_attack() method
@@ -127,5 +129,5 @@ def run_comparisson(dataset_fn=None, X=None, y=None, dataset_name=None, models=N
 
 
 if __name__ == "__main__":
-    run_comparisson(dataset_fn=load_breast_cancer, models='all')
+    run_comparisson(dataset_fn=load_iris, models='xgb')
 

@@ -1,11 +1,11 @@
 from sklearn.datasets import *
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from tabpfn.scripts.transformer_prediction_interface import TabPFNClassifier
+from tabpfn.scripts.transformer_adversarial_interface import AdversarialTabPFNClassifier
 import torch.optim as optim
 
 
-class AdversarialTabPFN:
+class AdversarialTabPFNInterface:
     def __init__(
             self,
             X_full=None,
@@ -55,7 +55,7 @@ class AdversarialTabPFN:
         X_test_clean = X_test.copy()
 
         # Instantiate the classifier
-        classifier = TabPFNClassifier(device='cpu')
+        classifier = AdversarialTabPFNClassifier(device='cpu')
 
         # Fit classifier
         classifier.fit(X_train, y_train)
