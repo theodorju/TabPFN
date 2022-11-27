@@ -1,5 +1,6 @@
 import os
-import shutil
+# ASKL2 failed on digits with an openblas error locally. this fixed it.
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import torch.optim as optim
 import pickle
 import numpy as np
@@ -25,6 +26,15 @@ def run_comparison(
 ):
 
     dataset_name = dataset_name if dataset_fn is None else "_".join(dataset_fn.__name__.split("_")[1:])
+    print_every = 4
+
+    if dataset_fn is None:
+        X = np.load(f'../adversarial_xy_data/{dataset_name}/X.npy')
+        y = np.load(f'../adversarial_xy_data/{dataset_name}/y.npy')
+
+    # Setup directory
+    if not os.path.exists('../results/'):
+        os.mkdir('../results/')
 
     # Setup adversarial attack
     adv = AdversarialTabPFNInterface(dataset_fn=dataset_fn,
@@ -35,7 +45,8 @@ def run_comparison(
                                      X_full=X,
                                      y_full=y,
                                      dataset_name=dataset_name,
-                                     test_percentage=test_percentage
+                                     test_percentage=test_percentage,
+                                     print_every=print_every
                                      )
 
     # Perform attack on TabPFN, return train and clean test set, modified test set, train and test labels
@@ -67,7 +78,7 @@ def run_comparison(
             ################### Autosklearn2 fitting ###################
             if models in ("askl", "all"):
                 # Fit Autosklearn
-                askl2_model = AutoSklearnClassifier(time_left_for_this_task=60)
+                askl2_model = AutoSklearnClassifier(time_left_for_this_task=120)
                 print("Fitting Autosklearn2...")
                 askl2_model.fit(X_train, y_train)
                 predictions = askl2_model.predict(X_test_clean)
@@ -89,14 +100,14 @@ def run_comparison(
             ################### MLP fitting ###################
             if models in ("mlp", "all"):
                 print("Fitting SKLearn MLP...")
-                mlp_model = MLPClassifier(max_iter=1000)
+                mlp_model = MLPClassifier(max_iter=200)
                 mlp_model.fit(X_train, y_train)
                 mlp_preds = mlp_model.predict(X_test_clean)
                 mlp_acc = accuracy_score(y_test, mlp_preds)
                 print(f"\tSklearn MLP initial accuracy: {mlp_acc}")
                 results["mlp"]['accuracy'].append(mlp_acc)
 
-        # for all subsequent iterations, use the already fitted models and only perform predictions in the modified
+        # For all subsequent iterations, use the already fitted models and only perform predictions in the modified
         # test sets.
         # Note that the test have been modified by adversarial attacks (gradient ascent) on TabPFN, not on each
         # individual model used here only for predictions.
@@ -107,7 +118,7 @@ def run_comparison(
                 # predict Autosklearn on attacked X
                 askl2_preds_modified = askl2_model.predict(X_attacked)
                 askl2_acc = accuracy_score(y_test, askl2_preds_modified)
-                print(f"\tAutosklearn accuracy on {i} step: {askl2_acc}")
+                print(f"\tAutosklearn accuracy on {i * print_every} step: {askl2_acc}")
                 results['askl2']['accuracy'].append(askl2_acc)
 
             ################### XGBoost prediction ###################
@@ -115,14 +126,14 @@ def run_comparison(
                 # predict XGBoost on attacked X
                 xgb_preds_modified = xgb_model.predict(X_attacked)
                 xgb_acc = accuracy_score(y_test, xgb_preds_modified)
-                print(f"\tXGBoost accuracy on {i} step: {xgb_acc}")
+                print(f"\tXGBoost accuracy on {i * print_every} step: {xgb_acc}")
                 results['xgboost']['accuracy'].append(xgb_acc)
 
             ################### MLP prediction ###################
             if models in ("mlp", "all"):
                 mlp_preds_modified = mlp_model.predict(X_attacked)
                 mlp_acc = accuracy_score(y_test, mlp_preds_modified)
-                print(f"\tSklearn MLP accuracy on {i} step: {mlp_acc}")
+                print(f"\tSklearn MLP accuracy on {i * print_every} step: {mlp_acc}")
                 results['mlp']['accuracy'].append(mlp_acc)
 
     with open(results_file_path, 'wb') as f:
@@ -131,17 +142,38 @@ def run_comparison(
 
 if __name__ == "__main__":
 
+    # Number of adversarial attack steps
+    num_steps = 4
+
     # Setup
-    datasets_fn = [load_iris, load_diabetes, load_digits]
+    datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+
     # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
-    test_percentage = [0.2, 0.2, 0.4435]
+    test_percentage = [0.2, 0.2, 0.4435, 0.2]
     lrs = [0.001, 0.01, 0.1, 0.5]
 
     # Loop over datasets
-    for i, dataset_fn in enumerate([load_iris]):
+    for i, dataset_fn in enumerate([None]):
 
         # Loop over learning rates
-        for lr in [0.01, 0.1]:
+        for lr in lrs:
 
-            # Run comparison
-            run_comparison(lr=lr, dataset_fn=dataset_fn, models='all', test_percentage=test_percentage[i])
+            # Call for specific dataset
+            if dataset_fn is None:
+                run_comparison(lr=lr,
+                               dataset_fn=dataset_fn,
+                               models='all',
+                               test_percentage=test_percentage[i],
+                               num_steps=num_steps,
+                               dataset_name='Titanic'
+                               )
+
+            # Call for sklearn datasets
+            else:
+                # Run comparison
+                run_comparison(lr=lr,
+                               dataset_fn=dataset_fn,
+                               models='all',
+                               test_percentage=test_percentage[i],
+                               num_steps=num_steps
+                               )

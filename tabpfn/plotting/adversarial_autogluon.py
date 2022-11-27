@@ -9,6 +9,11 @@ from sklearn.metrics import accuracy_score
 
 
 def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
+
+    print_every = 4
+    print("#" * 30)
+    print(f"Dataset: {dataset_name} \nLearning rate: {lr}")
+
     results_file_path = f'../results/{dataset_name}_results_{lr}.pkl'
 
     # load results dictionary
@@ -47,7 +52,7 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
             agl_preds_modified = agl_model.predict(test_modified_df)
             agl_preds_modified = agl_preds_modified.to_numpy()
             agl_acc = accuracy_score(y_test, agl_preds_modified)
-            print(f"\tAutoGluon accuracy on {i} step: {agl_acc}")
+            print(f"\tAutoGluon accuracy on {i * print_every} step: {agl_acc}")
             results['autogluon']['accuracy'].append(agl_acc)
 
     # Dump results back to file
@@ -58,14 +63,16 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
     if os.path.exists("AutogluonModels") and os.path.isdir("AutogluonModels"):
         shutil.rmtree("AutogluonModels")
 
+    print("Exiting...")
+
 
 if __name__ == "__main__":
 
     # Loop over datasets
-    for dataset_name in ["iris"]:
+    for dataset_name in ["breast_cancer"]:
 
         # Loop over learning rates
-        for lr in [0.01, 0.1, 0.0025]:
+        for lr in [0.01]:
 
             # Run comparison
             run_autogluon_comparison(dataset_name=dataset_name, lr=lr)
