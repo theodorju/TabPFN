@@ -77,35 +77,50 @@ def run_comparison(
 
             ################### Autosklearn2 fitting ###################
             if models in ("askl", "all"):
-                # Fit Autosklearn
-                askl2_model = AutoSklearnClassifier(time_left_for_this_task=120)
-                print("Fitting Autosklearn2...")
-                askl2_model.fit(X_train, y_train)
-                predictions = askl2_model.predict(X_test_clean)
-                askl2_acc = accuracy_score(y_test, predictions)
-                print(f"\tAutosklearn initial accuracy: {askl2_acc}")
-                results['askl2']['accuracy'].append(askl2_acc)
+                try:
+                    # Fit Autosklearn
+                    askl2_model = AutoSklearnClassifier(time_left_for_this_task=120)
+                    print("Fitting Autosklearn2...")
+                    askl2_model.fit(X_train, y_train)
+                    predictions = askl2_model.predict(X_test_clean)
+                    askl2_acc = accuracy_score(y_test, predictions)
+                    print(f"\tAutosklearn initial accuracy: {askl2_acc}")
+                    results['askl2']['accuracy'].append(askl2_acc)
+
+                except Exception:
+                    results['askl2']['failed'] = True
+                    print(f"askl2 failed to fit on {dataset_name} for learning rate: {lr}")
 
             ################### XGBoost fitting ###################
-            if models in ("xgb", "all"):
-                # Fit XGBoost
-                print("Fitting XGBoost...")
-                xgb_model = xgboost.XGBClassifier()
-                xgb_model.fit(X_train, y_train)
-                xgb_preds = xgb_model.predict(X_test_clean)
-                xgb_acc = accuracy_score(y_test, xgb_preds)
-                print(f"\tXGBoost initial accuracy: {xgb_acc}")
-                results['xgboost']['accuracy'].append(xgb_acc)
+            try:
+                if models in ("xgb", "all"):
+                    # Fit XGBoost
+                    print("Fitting XGBoost...")
+                    xgb_model = xgboost.XGBClassifier()
+                    xgb_model.fit(X_train, y_train)
+                    xgb_preds = xgb_model.predict(X_test_clean)
+                    xgb_acc = accuracy_score(y_test, xgb_preds)
+                    print(f"\tXGBoost initial accuracy: {xgb_acc}")
+                    results['xgboost']['accuracy'].append(xgb_acc)
+
+            except Exception:
+                results['xgboost']['failed'] = True
+                print(f"XGBoost failed to fit on {dataset_name} for learning rate: {lr}")
 
             ################### MLP fitting ###################
-            if models in ("mlp", "all"):
-                print("Fitting SKLearn MLP...")
-                mlp_model = MLPClassifier(max_iter=200)
-                mlp_model.fit(X_train, y_train)
-                mlp_preds = mlp_model.predict(X_test_clean)
-                mlp_acc = accuracy_score(y_test, mlp_preds)
-                print(f"\tSklearn MLP initial accuracy: {mlp_acc}")
-                results["mlp"]['accuracy'].append(mlp_acc)
+            try:
+                if models in ("mlp", "all"):
+                    print("Fitting SKLearn MLP...")
+                    mlp_model = MLPClassifier(max_iter=200)
+                    mlp_model.fit(X_train, y_train)
+                    mlp_preds = mlp_model.predict(X_test_clean)
+                    mlp_acc = accuracy_score(y_test, mlp_preds)
+                    print(f"\tSklearn MLP initial accuracy: {mlp_acc}")
+                    results["mlp"]['accuracy'].append(mlp_acc)
+
+            except Exception:
+                results['mlp']['failed'] = True
+                print(f"MLP failed to fit on {dataset_name} for learning rate: {lr}")
 
         # For all subsequent iterations, use the already fitted models and only perform predictions in the modified
         # test sets.
@@ -114,15 +129,16 @@ def run_comparison(
         else:
 
             ################### Autosklearn2 prediction ###################
-            if models in ("askl", "all"):
+            if models in ("askl", "all") and not results['askl2']['failed']:
                 # predict Autosklearn on attacked X
                 askl2_preds_modified = askl2_model.predict(X_attacked)
                 askl2_acc = accuracy_score(y_test, askl2_preds_modified)
                 print(f"\tAutosklearn accuracy on {i * print_every} step: {askl2_acc}")
                 results['askl2']['accuracy'].append(askl2_acc)
 
+
             ################### XGBoost prediction ###################
-            if models in ("xgb", "all"):
+            if models in ("xgb", "all") and not results['xgboost']['failed']:
                 # predict XGBoost on attacked X
                 xgb_preds_modified = xgb_model.predict(X_attacked)
                 xgb_acc = accuracy_score(y_test, xgb_preds_modified)
@@ -130,12 +146,13 @@ def run_comparison(
                 results['xgboost']['accuracy'].append(xgb_acc)
 
             ################### MLP prediction ###################
-            if models in ("mlp", "all"):
+            if models in ("mlp", "all") and not results['mlp']['failed']:
                 mlp_preds_modified = mlp_model.predict(X_attacked)
                 mlp_acc = accuracy_score(y_test, mlp_preds_modified)
                 print(f"\tSklearn MLP accuracy on {i * print_every} step: {mlp_acc}")
                 results['mlp']['accuracy'].append(mlp_acc)
 
+    # save results
     with open(results_file_path, 'wb') as f:
         pickle.dump(results, f)
 
@@ -153,7 +170,7 @@ if __name__ == "__main__":
     lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
     # Loop over datasets
-    for i, dataset_fn in enumerate([None]):
+    for i, dataset_fn in enumerate(datasets_fn):
 
         # Loop over learning rates
         for lr in lrs:

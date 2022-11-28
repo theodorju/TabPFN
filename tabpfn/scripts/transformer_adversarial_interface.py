@@ -49,16 +49,20 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                 "dataset_name": dataset_name,
             },
             "askl2": {
-                "accuracy": []
+                "accuracy": [],
+                "failed": False,
             },
             "autogluon": {
-                "accuracy": []
+                "accuracy": [],
+                "failed": False,
             },
             "xgboost": {
-                "accuracy": []
+                "accuracy": [],
+                "failed": False,
             },
             "mlp": {
-                "accuracy": []
+                "accuracy": [],
+                "failed": False,
             }
         }
 

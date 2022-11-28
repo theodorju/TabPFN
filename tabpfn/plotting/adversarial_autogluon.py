@@ -6,6 +6,7 @@ import numpy as np
 
 from autogluon.tabular import TabularPredictor
 from sklearn.metrics import accuracy_score
+from sklearn.datasets import *
 
 
 def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
@@ -68,11 +69,16 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
 
 if __name__ == "__main__":
 
+    datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+
     # Loop over datasets
-    for dataset_name in ["breast_cancer"]:
+    for dataset_fn in datasets_fn:
+
+        dataset_name = "_".join(dataset_fn.__name__.split("_")[1:]) if dataset_fn is not None else "titanic"
 
         # Loop over learning rates
-        for lr in [0.01]:
+        for lr in lrs:
 
             # Run comparison
             run_autogluon_comparison(dataset_name=dataset_name, lr=lr)
