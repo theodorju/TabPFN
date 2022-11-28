@@ -143,14 +143,14 @@ def run_comparison(
 if __name__ == "__main__":
 
     # Number of adversarial attack steps
-    num_steps = 4
+    num_steps = 100
 
     # Setup
     datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
 
     # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
     test_percentage = [0.2, 0.2, 0.4435, 0.2]
-    lrs = [0.001, 0.01, 0.1, 0.5]
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
     # Loop over datasets
     for i, dataset_fn in enumerate([None]):
@@ -165,7 +165,7 @@ if __name__ == "__main__":
                                models='all',
                                test_percentage=test_percentage[i],
                                num_steps=num_steps,
-                               dataset_name='Titanic'
+                               dataset_name='titanic'
                                )
 
             # Call for sklearn datasets
