@@ -127,30 +127,39 @@ def run_comparison(
         # Note that the test have been modified by adversarial attacks (gradient ascent) on TabPFN, not on each
         # individual model used here only for predictions.
         else:
-
-            ################### Autosklearn2 prediction ###################
-            if models in ("askl", "all") and not results['askl2']['failed']:
-                # predict Autosklearn on attacked X
-                askl2_preds_modified = askl2_model.predict(X_attacked)
-                askl2_acc = accuracy_score(y_test, askl2_preds_modified)
-                print(f"\tAutosklearn accuracy on {i * print_every} step: {askl2_acc}")
-                results['askl2']['accuracy'].append(askl2_acc)
-
+            try:
+                ################### Autosklearn2 prediction ###################
+                if models in ("askl", "all") and not results['askl2']['failed']:
+                    # predict Autosklearn on attacked X
+                    askl2_preds_modified = askl2_model.predict(X_attacked)
+                    askl2_acc = accuracy_score(y_test, askl2_preds_modified)
+                    print(f"\tAutosklearn accuracy on {i * print_every} step: {askl2_acc}")
+                    results['askl2']['accuracy'].append(askl2_acc)
+            except Exception:
+                results['askl2']['failed'] = True
+                print(f" askl2 failed to predict on {dataset_name} for learning rate: {lr} on step: {i}")
 
             ################### XGBoost prediction ###################
-            if models in ("xgb", "all") and not results['xgboost']['failed']:
-                # predict XGBoost on attacked X
-                xgb_preds_modified = xgb_model.predict(X_attacked)
-                xgb_acc = accuracy_score(y_test, xgb_preds_modified)
-                print(f"\tXGBoost accuracy on {i * print_every} step: {xgb_acc}")
-                results['xgboost']['accuracy'].append(xgb_acc)
-
+            try:
+                if models in ("xgb", "all") and not results['xgboost']['failed']:
+                    # predict XGBoost on attacked X
+                    xgb_preds_modified = xgb_model.predict(X_attacked)
+                    xgb_acc = accuracy_score(y_test, xgb_preds_modified)
+                    print(f"\tXGBoost accuracy on {i * print_every} step: {xgb_acc}")
+                    results['xgboost']['accuracy'].append(xgb_acc)
+            except Exception:
+                results['xgboost']['failed'] = True
+                print(f" XGBoost failed to predict on {dataset_name} for learning rate: {lr} on step: {i}")
             ################### MLP prediction ###################
-            if models in ("mlp", "all") and not results['mlp']['failed']:
-                mlp_preds_modified = mlp_model.predict(X_attacked)
-                mlp_acc = accuracy_score(y_test, mlp_preds_modified)
-                print(f"\tSklearn MLP accuracy on {i * print_every} step: {mlp_acc}")
-                results['mlp']['accuracy'].append(mlp_acc)
+            try:
+                if models in ("mlp", "all") and not results['mlp']['failed']:
+                    mlp_preds_modified = mlp_model.predict(X_attacked)
+                    mlp_acc = accuracy_score(y_test, mlp_preds_modified)
+                    print(f"\tSklearn MLP accuracy on {i * print_every} step: {mlp_acc}")
+                    results['mlp']['accuracy'].append(mlp_acc)
+            except Exception:
+                results['mlp']['failed'] = True
+                print(f" MLP failed to predict on {dataset_name} for learning rate: {lr} on step: {i}")
 
     # save results
     with open(results_file_path, 'wb') as f:
@@ -166,7 +175,7 @@ if __name__ == "__main__":
     datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
 
     # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
-    test_percentage = [0.2, 0.2, 0.4435, 0.2]
+    test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
     lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
     # Loop over datasets
