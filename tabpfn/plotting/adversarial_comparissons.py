@@ -188,7 +188,8 @@ if __name__ == "__main__":
 
     # Number of adversarial attack steps
     num_steps = 100
-
+    # learning rates
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
     # TabPFN current limit is 1000 examples
     tabpfn_limit = 1000
 
@@ -196,39 +197,41 @@ if __name__ == "__main__":
 
         openml_dataset_id = [11, 14, 15, 16, 18, 22, 23, 29, 31, 37]
 
-        lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
-
         for task_id in openml_dataset_id:
+            try:
+                print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
 
-            print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
+                task = openml.tasks.get_task(task_id, download_data=True)
+                dataset = task.get_dataset()
 
-            task = openml.tasks.get_task(task_id, download_data=True)
-            dataset = task.get_dataset()
+                # TODO: maybe not modify categorical features??
+                X, y, categorical_indicator, _ = dataset.get_data(
+                    dataset_format='array',
+                    target=dataset.default_target_attribute
+                )
 
-            # TODO: maybe not modify categorical features??
-            X, y, categorical_indicator, _ = dataset.get_data(
-                dataset_format='array',
-                target=dataset.default_target_attribute
-            )
+                test_percentage = 0.2
+                num_examples = X.shape[0]
 
-            test_percentage = 0.2
-            num_examples = X.shape[0]
+                # Skip datasets with more than 2000 features
+                if num_examples > 2000:
+                    continue
 
-            # Skip datasets with more than 2000 features
-            if num_examples > 2000:
-                continue
+                if num_examples > tabpfn_limit:
+                    test_percentage = np.round(1 - tabpfn_limit / num_examples, 2)
 
-            if num_examples > tabpfn_limit:
-                test_percentage = np.round(1 - tabpfn_limit / num_examples, 2)
+                for lr in lrs:
+                    run_comparison(lr,
+                                   num_steps=num_steps,
+                                   X=X, y=y,
+                                   dataset_name=task_id,
+                                   models="all",
+                                   test_percentage=test_percentage
+                                   )
 
-            for lr in [0.0025]:
-                run_comparison(lr,
-                               num_steps=num_steps,
-                               X=X, y=y,
-                               dataset_name=task_id,
-                               models="xgb",
-                               test_percentage=test_percentage
-                               )
+            except Exception as e:
+                print(f"Openml dataset {task_id} failed with error:")
+                print(e)
 
     else:
         # Setup
