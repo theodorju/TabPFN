@@ -5,6 +5,8 @@ import torch.optim as optim
 import pickle
 import numpy as np
 import xgboost
+import openml
+import argparse
 
 from autosklearn.classification import AutoSklearnClassifier
 from sklearn.metrics import accuracy_score
@@ -28,7 +30,8 @@ def run_comparison(
     dataset_name = dataset_name if dataset_fn is None else "_".join(dataset_fn.__name__.split("_")[1:])
     print_every = 4
 
-    if dataset_fn is None:
+    # TODO: fix this for titanic
+    if dataset_fn is None and X is None or y is None:
         X = np.load(f'../adversarial_xy_data/{dataset_name}/X.npy')
         y = np.load(f'../adversarial_xy_data/{dataset_name}/y.npy')
 
@@ -168,38 +171,94 @@ def run_comparison(
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(
+        prog="Adversarial comparisons",
+        description="Run TabPFN adversarial attack and compare results to other frameworks"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--openml",
+        help="Run comparison on automl datasets",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+    is_openml = args.openml
+
     # Number of adversarial attack steps
     num_steps = 100
 
-    # Setup
-    datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+    # TabPFN current limit is 1000 examples
+    tabpfn_limit = 1000
 
-    # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
-    test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
-    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+    if is_openml:
 
-    # Loop over datasets
-    for i, dataset_fn in enumerate(datasets_fn):
+        openml_dataset_id = [11, 14, 15, 16, 18, 22, 23, 29, 31, 37]
 
-        # Loop over learning rates
-        for lr in lrs:
+        lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
-            # Call for specific dataset
-            if dataset_fn is None:
-                run_comparison(lr=lr,
-                               dataset_fn=dataset_fn,
-                               models='all',
-                               test_percentage=test_percentage[i],
+        for task_id in openml_dataset_id:
+
+            print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
+
+            task = openml.tasks.get_task(task_id, download_data=True)
+            dataset = task.get_dataset()
+
+            # TODO: maybe not modify categorical features??
+            X, y, categorical_indicator, _ = dataset.get_data(
+                dataset_format='array',
+                target=dataset.default_target_attribute
+            )
+
+            test_percentage = 0.2
+            num_examples = X.shape[0]
+
+            # Skip datasets with more than 2000 features
+            if num_examples > 2000:
+                continue
+
+            if num_examples > tabpfn_limit:
+                test_percentage = np.round(1 - tabpfn_limit / num_examples, 2)
+
+            for lr in [0.0025]:
+                run_comparison(lr,
                                num_steps=num_steps,
-                               dataset_name='titanic'
+                               X=X, y=y,
+                               dataset_name=task_id,
+                               models="xgb",
+                               test_percentage=test_percentage
                                )
 
-            # Call for sklearn datasets
-            else:
-                # Run comparison
-                run_comparison(lr=lr,
-                               dataset_fn=dataset_fn,
-                               models='all',
-                               test_percentage=test_percentage[i],
-                               num_steps=num_steps
-                               )
+    else:
+        # Setup
+        datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+
+        # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
+        test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
+
+        # Loop over datasets
+        for i, dataset_fn in enumerate(datasets_fn):
+
+            # Loop over learning rates
+            for lr in lrs:
+
+                # Call for specific dataset
+                if dataset_fn is None:
+                    run_comparison(lr=lr,
+                                   dataset_fn=dataset_fn,
+                                   models='all',
+                                   test_percentage=test_percentage[i],
+                                   num_steps=num_steps,
+                                   dataset_name='titanic'
+                                   )
+
+                # Call for sklearn datasets
+                else:
+                    # Run comparison
+                    run_comparison(lr=lr,
+                                   dataset_fn=dataset_fn,
+                                   models='all',
+                                   test_percentage=test_percentage[i],
+                                   num_steps=num_steps
+                                   )
