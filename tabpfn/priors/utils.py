@@ -1,14 +1,11 @@
 import random
 
 import torch
-import seaborn as sns
 
 from tabpfn.utils import set_locals_in_self
 from .prior import PriorDataLoader
 from torch import nn
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import scipy.stats as stats
 import math
 
@@ -50,6 +47,9 @@ def get_batch_to_dataloader(get_batch_method_):
     return DL
 
 def plot_features(data, targets, fig=None, categorical=True):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
     if torch.is_tensor(data):
         data = data.detach().cpu().numpy()
         targets = targets.detach().cpu().numpy()
@@ -94,6 +94,7 @@ def plot_features(data, targets, fig=None, categorical=True):
 
 
 def plot_prior(prior):
+    import matplotlib.pyplot as plt
     s = np.array([prior() for _ in range(0, 1000)])
     count, bins, ignored = plt.hist(s, 50, density=True)
     print(s.min())
@@ -110,13 +111,6 @@ def zipf_sampler_f(a, b, c):
     weights /= weights.sum()
     return lambda : stats.rv_discrete(name='bounded_zipf', values=(x, weights)).rvs(1)
 scaled_beta_sampler_f = lambda a, b, scale, minimum : lambda : minimum + round(beta_sampler_f(a, b)() * (scale - minimum))
-
-
-def normalize_by_used_features_f(x, num_features_used, num_features, normalize_with_sqrt=False):
-    if normalize_with_sqrt:
-        return x / (num_features_used / num_features)**(1 / 2)
-    return x / (num_features_used / num_features)
-
 
 def order_by_y(x, y):
     order = torch.argsort(y if random.randint(0, 1) else -y, dim=0)[:, 0, 0]

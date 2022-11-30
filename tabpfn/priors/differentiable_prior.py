@@ -3,8 +3,8 @@ from torch import nn
 import math
 
 from .utils import get_batch_to_dataloader
-from tabpfn.utils import default_device
-from .utils import order_by_y, normalize_by_used_features_f
+from tabpfn.utils import default_device, normalize_by_used_features_f
+from .utils import order_by_y
 
 from .utils import trunc_norm_sampler_f, beta_sampler_f, gamma_sampler_f, uniform_sampler_f, zipf_sampler_f, scaled_beta_sampler_f, uniform_int_sampler_f
 
@@ -277,9 +277,9 @@ def merge_style_with_info(diff_hparams_keys, diff_hparams_f, style, transform=Tr
     return {k : t(v) for k, v in params.items()}
 
 
-import ConfigSpace.hyperparameters as CSH
 
 def replace_differentiable_distributions(config):
+    import ConfigSpace.hyperparameters as CSH
     diff_config = config['differentiable_hyperparameters']
     for name, diff_hp_dict in diff_config.items():
         distribution = diff_hp_dict['distribution']

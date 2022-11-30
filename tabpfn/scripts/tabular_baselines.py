@@ -1,3 +1,7 @@
+import sys
+tabpfn_path = '../../'
+sys.path.insert(0, tabpfn_path)
+
 import pandas
 from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import GridSearchCV
@@ -7,6 +11,7 @@ from sklearn.model_selection import ParameterGrid
 import tempfile
 import random
 import math
+import sklearn
 import os
 #from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
 from sklearn import preprocessing
@@ -148,13 +153,57 @@ def get_scoring_string(metric_used, multiclass=True, usage="sklearn_cv"):
     else:
         raise Exception('No scoring string found for metric')
 
-def eval_f(params, clf_, x, y, metric_used, start_time, max_time):
-    if time.time() - start_time > max_time:
-        return np.nan
+def eval_f(params, clf_, x, y, metric_used):
     scores = cross_val_score(clf_(**params), x, y, cv=CV, scoring=get_scoring_string(metric_used, usage='sklearn_cv'))
-    if get_scoring_string(metric_used, usage='sklearn_cv') == 'r2':
+    if get_scoring_string(metric_used, usage='sklearn_cv') == 'r2' or get_scoring_string(metric_used, usage='sklearn_cv') == 'neg_log_loss':
         return np.nanmean(scores)
+    
     return -np.nanmean(scores)
+
+def eval_complete_f(x, y, test_x, test_y, key, clf_, metric_used, max_time, no_tune):
+    start_time = time.time()
+    def stop(trial):
+        return time.time() - start_time > max_time, []
+
+    if no_tune is None:
+      default = eval_f({}, clf_, x, y, metric_used)
+      trials = Trials()
+      best = fmin(
+          fn=lambda params: eval_f(params, clf_, x, y, metric_used),
+          space=param_grid_hyperopt[key],
+          algo=rand.suggest,
+          rstate=np.random.RandomState(int(y[:].sum()) % 10000),
+          early_stop_fn=stop,
+          trials=trials,
+          catch_eval_exceptions=True,
+          verbose=True,
+          # The seed is deterministic but varies for each dataset and each split of it
+          max_evals=1000)
+      best_score = np.min([t['result']['loss'] for t in trials.trials])
+      if best_score < default:
+        best = space_eval(param_grid_hyperopt[key], best)
+      else:
+        best = {}
+    else:
+      best = no_tune.copy()
+
+    start = time.time()
+    clf = clf_(**best)
+    clf.fit(x, y)
+    fit_time = time.time() - start
+    start = time.time()
+    if is_classification(metric_used):
+        pred = clf.predict_proba(test_x)
+    else:
+        pred = clf.predict(test_x)
+    inference_time = time.time() - start
+    metric = metric_used(test_y, pred)
+    
+    best = {'best': best}
+    best['fit_time'] = fit_time
+    best['inference_time'] = inference_time
+
+    return metric, pred, best#, times
 
 def preprocess_impute(x, y, test_x, test_y, impute, one_hot, standardize, cat_features=[]):
     import warnings
@@ -187,6 +236,7 @@ def preprocess_impute(x, y, test_x, test_y, impute, one_hot, standardize, cat_fe
         x, test_x = scaler.transform(x), scaler.transform(test_x)
 
     return x, y, test_x, test_y
+
 import torch
 import random
 from tqdm import tqdm
@@ -896,7 +946,7 @@ def autosklearn2_metric(x, y, test_x, test_y, cat_features, metric_used, max_tim
         pred = clf.predict(test_x)
     metric = metric_used(test_y, pred)
 
-    return metric, pred, None
+    return metric, pred, clf.leaderboard()
 
 param_grid_hyperopt['ridge'] = {
     'max_iter': hp.randint('max_iter', 50, 500)
@@ -917,7 +967,7 @@ def ridge_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
 
     def stop(trial):
         return time.time() - start_time > max_time, []
-
+    
     best = fmin(
         fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
         space=param_grid_hyperopt['ridge'],
@@ -986,7 +1036,7 @@ param_grid_hyperopt['lightgbm'] = {
 
 from lightgbm import LGBMClassifier
 
-def lightgbm_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def lightgbm_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False, impute=False, standardize=False
                                              , cat_features=cat_features)
@@ -995,28 +1045,7 @@ def lightgbm_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=30
         return LGBMClassifier(categorical_feature=cat_features, use_missing=True
                               , objective=get_scoring_string(metric_used, usage='lightgbm', multiclass=len(np.unique(y)) > 2), **params)
 
-    start_time = time.time()
-
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['lightgbm'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=10000)
-    best = space_eval(param_grid_hyperopt['lightgbm'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-
-    pred = clf.predict_proba(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'lightgbm', clf_, metric_used, max_time, no_tune)
 
 param_grid_hyperopt['logistic'] = {
     'penalty': hp.choice('penalty', ['l1', 'l2', 'none'])
@@ -1025,7 +1054,7 @@ param_grid_hyperopt['logistic'] = {
     , 'C': hp.loguniform('C', -5, math.log(5.0))}  # 'normalize': [False],
 
 
-def logistic_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def logistic_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=True, impute=True, standardize=True
                                              , cat_features=cat_features)
@@ -1033,28 +1062,7 @@ def logistic_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=30
     def clf_(**params):
         return LogisticRegression(solver='saga', tol=1e-4, n_jobs=MULTITHREAD, **params)
 
-    start_time = time.time()
-
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['logistic'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=1000)
-    best = space_eval(param_grid_hyperopt['logistic'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-
-    pred = clf.predict_proba(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'logistic', clf_, metric_used, max_time, no_tune)
 
 
 ## Random Forest
@@ -1064,7 +1072,7 @@ param_grid_hyperopt['random_forest'] = {'n_estimators': hp.randint('n_estimators
                'max_features': hp.choice('max_features', ['auto', 'sqrt']),
                'max_depth': hp.randint('max_depth', 1, 45),
                'min_samples_split': hp.choice('min_samples_split', [5, 10])}
-def random_forest_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def random_forest_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
     from sklearn.ensemble import RandomForestClassifier
 
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
@@ -1076,36 +1084,41 @@ def random_forest_metric(x, y, test_x, test_y, cat_features, metric_used, max_ti
             return RandomForestClassifier(n_jobs=MULTITHREAD, **params)
         return RandomForestClassifier(n_jobs=MULTITHREAD, **params)
 
-    start_time = time.time()
+    return eval_complete_f(x, y, test_x, test_y, 'random_forest', clf_, metric_used, max_time, no_tune)
 
-    def stop(trial):
-        return time.time() - start_time > max_time, []
+## Gradient Boosting
+param_grid_hyperopt['gradient_boosting'] = {}
+def gradient_boosting_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
+    from sklearn import ensemble
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+                                             one_hot=True, impute=True, standardize=True,
+                                             cat_features=cat_features)
 
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['random_forest'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=10000)
-    best = space_eval(param_grid_hyperopt['random_forest'], best)
+    def clf_(**params):
+        if is_classification(metric_used):
+            return ensemble.GradientBoostingClassifier(**params)
+        return ensemble.GradientBoosting(**params)
 
-    clf = clf_(**best)
-    clf.fit(x, y)
+    return eval_complete_f(x, y, test_x, test_y, 'gradient_boosting', clf_, metric_used, max_time, no_tune)
 
-    if is_classification(metric_used):
-        pred = clf.predict_proba(test_x)
-    else:
-        pred = clf.predict(test_x)
-    metric = metric_used(test_y, pred)
+## SVM
+param_grid_hyperopt['svm'] = {'C': hp.choice('C', [0.1,1, 10, 100]), 'gamma': hp.choice('gamma', ['auto', 'scale']),'kernel': hp.choice('kernel', ['rbf', 'poly', 'sigmoid'])}
+def svm_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
+    x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
+                                             one_hot=True, impute=True, standardize=True,
+                                             cat_features=cat_features)
 
-    return metric, pred, best
+    def clf_(**params):
+        if is_classification(metric_used):
+            return sklearn.svm.SVC(probability=True, **params)
+        return sklearn.svm.SVR(**params)
+
+    return eval_complete_f(x, y, test_x, test_y, 'svm', clf_, metric_used, max_time, no_tune)
 
 ## KNN
 param_grid_hyperopt['knn'] = {'n_neighbors': hp.randint('n_neighbors', 1,16)
                               }
-def knn_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def knn_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=True, standardize=True,
                                              cat_features=cat_features)
@@ -1115,73 +1128,26 @@ def knn_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
             return neighbors.KNeighborsClassifier(n_jobs=MULTITHREAD, **params)
         return neighbors.KNeighborsRegressor(n_jobs=MULTITHREAD, **params)
 
-    start_time = time.time()
-
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['knn'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=200)
-    best = space_eval(param_grid_hyperopt['knn'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-
-    if is_classification(metric_used):
-        pred = clf.predict_proba(test_x)
-    else:
-        pred = clf.predict(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'knn', clf_, metric_used, max_time, no_tune)
 
 ## GP
 param_grid_hyperopt['gp'] = {
     'params_y_scale': hp.loguniform('params_y_scale', math.log(0.05), math.log(5.0)),
     'params_length_scale': hp.loguniform('params_length_scale', math.log(0.1), math.log(1.0))
 }
-def gp_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def gp_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y,
                                              one_hot=True, impute=True, standardize=True,
                                              cat_features=cat_features)
 
-    def clf_(params_y_scale,params_length_scale, **params):
+    def clf_(params_y_scale=None,params_length_scale=None, **params):
+        kernel = params_y_scale * RBF(params_length_scale) if params_length_scale is not None else None
         if is_classification(metric_used):
-            return GaussianProcessClassifier(kernel= params_y_scale * RBF(params_length_scale), **params)
+            return GaussianProcessClassifier(kernel=kernel, **params)
         else:
-            return GaussianProcessRegressor(kernel= params_y_scale * RBF(params_length_scale), **params)
+            return GaussianProcessRegressor(kernel=kernel, **params)
 
-    start_time = time.time()
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['gp'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=1000)
-    best = space_eval(param_grid_hyperopt['gp'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-
-    if is_classification(metric_used):
-        pred = clf.predict_proba(test_x)
-    else:
-        pred = clf.predict(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'gp', clf_, metric_used, max_time, no_tune)
 
 ## Tabnet
 # https://github.com/dreamquark-ai/tabnet
@@ -1271,7 +1237,7 @@ param_grid_hyperopt['catboost'] = {
     'iterations': hp.randint('iterations', 100, 4000), # This is smaller than in paper, 4000 leads to ram overusage
 }
 
-def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None, gpu_id=None):
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False
                                              , cat_features=cat_features
@@ -1281,6 +1247,11 @@ def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=30
     # Nans in categorical features must be encoded as separate class
     x[:, cat_features], test_x[:, cat_features] = np.nan_to_num(x[:, cat_features], -1), np.nan_to_num(
         test_x[:, cat_features], -1)
+    
+    if gpu_id is not None:
+         gpu_params = {'task_type':"GPU", 'devices':gpu_id}
+    else:
+        gpu_params = {}
 
     def make_pd_from_np(x):
         data = pd.DataFrame(x)
@@ -1300,6 +1271,7 @@ def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=30
                 random_seed=int(y[:].sum()),
                                    logging_level='Silent',
                                     cat_features=cat_features,
+                **gpu_params,
                                       **params)
         else:
             return CatBoostRegressor(
@@ -1309,31 +1281,10 @@ def catboost_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=30
                 random_seed=int(y[:].sum()),
                 logging_level='Silent',
                 cat_features=cat_features,
+                **gpu_params,
                 **params)
 
-    start_time = time.time()
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['catboost'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=1000)
-    best = space_eval(param_grid_hyperopt['catboost'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-    if is_classification(metric_used):
-        pred = clf.predict_proba(test_x)
-    else:
-        pred = clf.predict(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'catboost', clf_, metric_used, max_time, no_tune)
 
 
 # XGBoost
@@ -1351,11 +1302,17 @@ param_grid_hyperopt['xgb'] = {
     'n_estimators': hp.randint('n_estimators', 100, 4000), # This is smaller than in paper
 }
 
-def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
+def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300, no_tune=None, gpu_id=None):
     import xgboost as xgb
     # XGB Documentation:
     # XGB handles categorical data appropriately without using One Hot Encoding, categorical features are experimetal
     # XGB handles missing values appropriately without imputation
+    
+    if gpu_id is not None:
+         gpu_params = {'tree_method':'gpu_hist', 'gpu_id':gpu_id}
+    else:
+        gpu_params = {}
+
 
     x, y, test_x, test_y = preprocess_impute(x, y, test_x, test_y
                                              , one_hot=False
@@ -1366,41 +1323,20 @@ def xgb_metric(x, y, test_x, test_y, cat_features, metric_used, max_time=300):
     def clf_(**params):
         if is_classification(metric_used):
             return xgb.XGBClassifier(use_label_encoder=False
-                                     , nthread=1
+                                     , nthread=MULTITHREAD
                                      , **params
+                                     , **gpu_params
                                      , eval_metric=get_scoring_string(metric_used, usage='xgb') # AUC not implemented
             )
         else:
             return xgb.XGBRegressor(use_label_encoder=False
-                                     , nthread=1
+                                     , nthread=MULTITHREAD
                                      , **params
+                                    , **gpu_params
                                      , eval_metric=get_scoring_string(metric_used, usage='xgb')  # AUC not implemented
                                      )
 
-    start_time = time.time()
-    def stop(trial):
-        return time.time() - start_time > max_time, []
-
-    best = fmin(
-        fn=lambda params: eval_f(params, clf_, x, y, metric_used, start_time, max_time),
-        space=param_grid_hyperopt['xgb'],
-        algo=rand.suggest,
-        rstate=np.random.RandomState(int(y[:].sum()) % 10000),
-        early_stop_fn=stop,
-        # The seed is deterministic but varies for each dataset and each split of it
-        max_evals=1000)
-    best = space_eval(param_grid_hyperopt['xgb'], best)
-
-    clf = clf_(**best)
-    clf.fit(x, y)
-
-    if is_classification(metric_used):
-        pred = clf.predict_proba(test_x)
-    else:
-        pred = clf.predict(test_x)
-    metric = metric_used(test_y, pred)
-
-    return metric, pred, best
+    return eval_complete_f(x, y, test_x, test_y, 'xgb', clf_, metric_used, max_time, no_tune)
 
 """
 LEGACY UNUSED
