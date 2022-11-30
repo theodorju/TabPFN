@@ -6,9 +6,15 @@ import numpy as np
 
 from autogluon.tabular import TabularPredictor
 from sklearn.metrics import accuracy_score
+from sklearn.datasets import *
 
 
 def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
+
+    print_every = 4
+    print("#" * 30)
+    print(f"Dataset: {dataset_name} \nLearning rate: {lr}")
+
     results_file_path = f'../results/{dataset_name}_results_{lr}.pkl'
 
     # load results dictionary
@@ -47,7 +53,7 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
             agl_preds_modified = agl_model.predict(test_modified_df)
             agl_preds_modified = agl_preds_modified.to_numpy()
             agl_acc = accuracy_score(y_test, agl_preds_modified)
-            print(f"\tAutoGluon accuracy on {i} step: {agl_acc}")
+            print(f"\tAutoGluon accuracy on {i * print_every} step: {agl_acc}")
             results['autogluon']['accuracy'].append(agl_acc)
 
     # Dump results back to file
@@ -58,14 +64,21 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
     if os.path.exists("AutogluonModels") and os.path.isdir("AutogluonModels"):
         shutil.rmtree("AutogluonModels")
 
+    print("Exiting...")
+
 
 if __name__ == "__main__":
 
+    datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+
     # Loop over datasets
-    for dataset_name in ["iris"]:
+    for dataset_fn in datasets_fn:
+
+        dataset_name = "_".join(dataset_fn.__name__.split("_")[1:]) if dataset_fn is not None else "titanic"
 
         # Loop over learning rates
-        for lr in [0.01, 0.1, 0.0025]:
+        for lr in lrs:
 
             # Run comparison
             run_autogluon_comparison(dataset_name=dataset_name, lr=lr)
