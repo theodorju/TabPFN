@@ -1,8 +1,10 @@
 import os
 import shutil
+import argparse
 import pickle
 import pandas as pd
 import numpy as np
+import openml
 
 from autogluon.tabular import TabularPredictor
 from sklearn.metrics import accuracy_score
@@ -69,16 +71,45 @@ def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(
+        prog="Adversarial comparisons",
+        description="Run TabPFN adversarial attack and compare results to other frameworks"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--openml",
+        help="Run comparison on automl datasets",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+    is_openml = args.openml
+
     datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
     lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
-    # Loop over datasets
-    for dataset_fn in datasets_fn:
+    if is_openml:
 
-        dataset_name = "_".join(dataset_fn.__name__.split("_")[1:]) if dataset_fn is not None else "titanic"
+        openml_dataset_id = [11, 14, 15, 16, 18, 22, 23, 29, 31, 37]
 
-        # Loop over learning rates
-        for lr in lrs:
+        for task_id in openml_dataset_id:
+            print(f"Starting adversarial autogluon predictions for openml dataset: {task_id}...")
+            for lr in lrs:
+                try:
+                    run_autogluon_comparison(dataset_name=str(task_id), lr=lr)
+                except Exception as e:
+                    print(f"Openml dataset {task_id} failed on autogluon with error:")
+                    print(e)
 
-            # Run comparison
-            run_autogluon_comparison(dataset_name=dataset_name, lr=lr)
+    else:
+        # Loop over datasets
+        for dataset_fn in datasets_fn:
+
+            dataset_name = "_".join(dataset_fn.__name__.split("_")[1:]) if dataset_fn is not None else "titanic"
+
+            # Loop over learning rates
+            for lr in lrs:
+
+                # Run comparison
+                run_autogluon_comparison(dataset_name=dataset_name, lr=lr)
