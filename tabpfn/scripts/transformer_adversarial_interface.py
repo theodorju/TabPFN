@@ -47,6 +47,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                 "l2_norm_overall": [],
                 "learning_rate": lr,
                 "dataset_name": dataset_name,
+                "prediction": []
             },
             "askl2": {
                 "accuracy": [],
@@ -126,6 +127,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                         np.linalg.norm(X_test_tensor.detach().numpy() - previous_X_test, ord=2))
                     results["tabPFN"]["l2_norm_overall"].append(
                         np.linalg.norm(X_test_tensor.detach().numpy() - X, ord=2))
+                    results["tabPFN"]["prediction"].append(prediction.squeeze(0).detach().numpy())
 
             previous_X_test = X_test_tensor.detach().numpy().copy()
             X_full = torch.concat([X_train_tensor, X_test_tensor], axis=0).float().unsqueeze(1)
