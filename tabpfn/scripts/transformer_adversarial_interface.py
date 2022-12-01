@@ -31,7 +31,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
         X = check_array(X, force_all_finite=False)
         # Convert to tensors
         X_train_tensor = torch.from_numpy(self.X_).to(self.device).float()
-        X_test_tensor = torch.from_numpy(X).to(self.device).float()
+        X_test_tensor = torch.from_numpy(X.copy()).to(self.device).float()
 
         # Activate gradient
         X_train_tensor.requires_grad = True
@@ -83,7 +83,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
         eval_pos = self.X_.shape[0]
 
         # initialize to calculate l2-norm on the fly
-        previous_X_test = X
+        previous_X_test = X.copy()
 
         for step in range(0, num_steps + 1):
 

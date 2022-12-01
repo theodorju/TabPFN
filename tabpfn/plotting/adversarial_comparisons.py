@@ -31,7 +31,7 @@ def run_comparison(
     print_every = 4
 
     # TODO: fix this for titanic
-    if dataset_fn is None and X is None or y is None:
+    if dataset_fn is None and (X is None or y is None):
         X = np.load(f'../adversarial_xy_data/{dataset_name}/X.npy')
         y = np.load(f'../adversarial_xy_data/{dataset_name}/y.npy')
 

@@ -12,7 +12,7 @@ axis_titles = {"l2_norm_overall":" L2 norm of (X_attacked - X_original) ",
                "range":"Number of steps"
                }
 def plot_norm_vs_acc_diff_models(range = None,x_axis = "l2_norm_overall",y_axis = "accuracy", fig_title="Insert Title"):
-    colours_ = ['green', 'blue', 'red', 'magenta', 'purple']
+    colours_ = ['red','green', 'blue', 'magenta', 'purple']
     colours = {k: colours_[i] for i, k in enumerate(models)}
     fig, axs = plt.subplots(nrows = len(lrs), ncols=len(datasets), figsize=(20, 16))
     for i,lr in enumerate(lrs):
@@ -26,24 +26,40 @@ def plot_norm_vs_acc_diff_models(range = None,x_axis = "l2_norm_overall",y_axis 
                 continue
             if range is None:
                 x = results_dict['tabPFN'][x_axis]
+            elif range == 'accuracyTab':
+                x = results_dict['tabPFN']['accuracy']
+                min_x = min(x)
+                max_x = max(x)
+                s = results_dict['tabPFN']['l2_norm_overall']
+                s_norm = (s - np.min(s)) / (np.max(s) - np.min(s))
             else:
                 x = list(range)
 
             for model_name in models:
                 y = results_dict[model_name][y_axis]
-                if len(y) == 0:
+                if len(y) != len(x):
+                    print(model_name,dataset_name,lr)
                     continue
-                axs[i,j].plot(x, y, color= colours[model_name], label=model_name)
-                axs[i,j].axhline(y=0.5,linestyle = '--',linewidth=2, color='grey')
+                if range == 'accuracyTab':
+                    axs[i, j].scatter(x, y, color=colours[model_name], label=model_name, s=s_norm*20)
+                    min_diag = min(min_x,min(y))
+                    max_diag = max(max_x,max(y))
+                    axs[i, j].plot([min_diag,max_diag], [min_diag,max_diag], linestyle="--", linewidth=2,color='grey')
+                else:
+                    axs[i,j].plot(x, y, color= colours[model_name], label=model_name)
+                    axs[i,j].axhline(y=0.5,linestyle = '--',linewidth=2, color='grey')
                 axs[i,j].set_title(f"{dataset_name}, lr = {lr}")
-                axs[i,j].grid()
+                axs[i,j].grid(True)
 
-    fig.text(0.5, 0.04, axis_titles[x_axis], ha='center')
-    fig.text(0.04, 0.5, axis_titles[y_axis], va='center', rotation='vertical')
+
+    fig.text(0.5, 0.04, axis_titles[x_axis] if range!= 'accuracyTab' else 'Accuracy of TabPFN', ha='center')
+    fig.text(0.04, 0.5, axis_titles[y_axis] if range!= 'accuracyTab' else 'Accuracy of Other Models', va='center',
+             rotation='vertical')
     fig.suptitle(fig_title)
     handles, labels = fig.axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper right')
+    fig.legend(handles, labels, loc='upper right',bbox_to_anchor = (0.96,0.96))
     plt.show()
+
 
 
 def plot_norm_vs_acc_diff_num_features(inner_loop,outer_loop,outer_is_dataset,range=None,l2_norm = False):
@@ -135,7 +151,8 @@ def plot_num_steps_vs_norm(range):
     plt.show()
 
 #plot_num_steps_vs_norm(range(0,101,4))
-#plot_norm_vs_acc_diff_models(range=None,x_axis="l2_norm_overall", y_axis="accuracy", fig_title="L2 norm vs accuracy")
-plot_norm_vs_acc_diff_num_features(outer_loop=lrs,inner_loop=datasets,outer_is_dataset=False,range=range(0,101,4), \
-                                                                                              l2_norm=False)
+plot_norm_vs_acc_diff_models(range='accuracyTab',x_axis="accuracy", y_axis="accuracy", fig_title="TabPFN vs Other "
+                                                                                                 "Models")
+#plot_norm_vs_acc_diff_num_features(outer_loop=lrs,inner_loop=datasets,outer_is_dataset=False,range=range(0,101,4), \
+#                                                                                              l2_norm=False)
 print('here')
