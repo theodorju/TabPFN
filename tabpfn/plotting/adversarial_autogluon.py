@@ -4,14 +4,16 @@ import argparse
 import pickle
 import pandas as pd
 import numpy as np
-import openml
 
 from autogluon.tabular import TabularPredictor
 from sklearn.metrics import accuracy_score
 from sklearn.datasets import *
 
 
-def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
+def run_autogluon_comparison(
+        dataset_name="iris",
+        lr=0.0025
+):
 
     print_every = 4
     print("#" * 30)

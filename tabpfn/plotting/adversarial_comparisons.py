@@ -22,15 +22,44 @@ def run_comparison(
         dataset_fn=None,
         X=None,
         y=None,
-        dataset_name=None,
-        models=None,
+        dataset_name='titanic',
+        models='all',
         test_percentage=0.2
-):
+) -> None:
+    """
+    Run adversarial comparison on a dataset. This function is used to run the adversarial comparisons. It performs
+    the adversarial attack on TabPFN using an optimizer and learning rate for some number of steps.
+    It then performs predictions using the attacked dataset on the rest of the baselines.
 
+    Baselines include:
+        - MLP: The sklearn MLP classifier with default parameters.
+        - XGBoost: XGBoost classifier with default parameters.
+        - AutoSklearn: AutoML framework with default parameters.
+
+    The comparisons on AutoGluon are performed in a different script since currently execution of AutoGluon on the
+    same environment that TabPFN is installed is not supported.
+
+    Args:
+        lr (float): The learning rate of the optimizer performing the gradient ascent (adversarial attack).
+            Default: 0.0025
+        num_steps (int): Number of steps of the adversarial attack. Default: 100
+        optim (torch.nn.optim): The optimizer to use for the adversarial attack. Default: torch.optim.Adam
+        dataset_fn: The function to use to load the dataset. Default: None
+        X (ndarray): The dataset to use. Default: None (Either dataset_fn or X, y must be provided)
+        y (ndarray): The labels of the dataset. Default: None (Either dataset_fn or X, y must be provided)
+        dataset_name (str): The name of the dataset used for logging. Default: titanic
+        models (str): The models to use for the comparison. Default: "all" (All models are used)
+        test_percentage (float): The percentage of the dataset to use for testing. Default: 0.2
+
+    Returns:
+        None
+    """
+
+    # If dataset_fn is not provided use the specified dataset name, otherwise parse the dataset function and use that
     dataset_name = dataset_name if dataset_fn is None else "_".join(dataset_fn.__name__.split("_")[1:])
     print_every = 4
 
-    # TODO: fix this for titanic
+    # If neither dataset nor X, y are provided load the titanic dataset
     if dataset_fn is None and (X is None or y is None):
         X = np.load(f'../adversarial_xy_data/{dataset_name}/X.npy')
         y = np.load(f'../adversarial_xy_data/{dataset_name}/y.npy')
@@ -39,7 +68,7 @@ def run_comparison(
     if not os.path.exists('../results/'):
         os.mkdir('../results/')
 
-    # Setup adversarial attack
+    # Instantiate the adversarial attack interface
     adv = AdversarialTabPFNInterface(dataset_fn=dataset_fn,
                                      optimizer=optim,
                                      num_steps=num_steps,
@@ -61,6 +90,7 @@ def run_comparison(
     if not os.path.exists(f"../results/{dataset_name}_{lr}"):
         os.mkdir(f"../results/{dataset_name}_{lr}")
 
+    # Save the splits for AutoGluon
     np.save(f"../results/{dataset_name}_{lr}/X_train", X_train)
     np.save(f"../results/{dataset_name}_{lr}/X_test_clean", X_test_clean)
     np.save(f"../results/{dataset_name}_{lr}/y_train", y_train)
@@ -69,10 +99,13 @@ def run_comparison(
     # Load results file, generated automatically during TabPFN adversarial attack
     results_file_path = f'../results/{dataset_name}_results_{lr}.pkl'
 
+    # Load the results file
     with open(results_file_path, 'rb') as f:
         results = pickle.load(f)
 
     # Loop over the modified test sets generated during TabPFN adversarial attacks and perform comparisons
+    # We assume that if the attack fails at some step, the results file will not contain the results for that and
+    # any upcoming steps
     for i, X_attacked in enumerate(results['tabPFN']['X_test']):
 
         # For the first iteration fit models and predict on the unmodified test set
@@ -183,19 +216,56 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    parser.add_argument(
+        "-s",
+        "--number_of_steps",
+        help="Number of steps to run the attack for",
+        type=int,
+        default=100,
+    )
+
+    parser.add_argument(
+        "-d",
+        "--openml_datasets",
+        nargs="*",  # 0 or more values expected => creates a list
+        help="OpenML dataset ids to run the attack on",
+        type=int,
+        default=[11, 14, 15, 16, 18, 22, 23, 29, 31, 37],
+    )
+
+    parser.add_argument(
+        "-lr",
+        "--learning_rates",
+        nargs="*",  # 0 or more values expected => creates a list
+        help="Learning rates to run the attack on",
+        type=float,
+        default=[0.001, 0.0025, 0.005, 0.01, 0.1]
+    )
+
+    parser.add_argument(
+        "-t",
+        "--test_percentage",
+        help="Percentage of the dataset to use as test set",
+        type=float,
+        default=0.2,
+    )
+
+    # Parse arguments
     args = parser.parse_args()
     is_openml = args.openml
 
     # Number of adversarial attack steps
-    num_steps = 100
+    num_steps = args.number_of_steps
+
     # learning rates
-    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+    lrs = args.learning_rates
+
     # TabPFN current limit is 1000 examples
     tabpfn_limit = 1000
 
     if is_openml:
 
-        openml_dataset_id = [11, 14, 15, 16, 18, 22, 23, 29, 31, 37]
+        openml_dataset_id = args.openml_datasets
 
         for task_id in openml_dataset_id:
             try:
@@ -204,13 +274,12 @@ if __name__ == "__main__":
                 task = openml.tasks.get_task(task_id, download_data=True)
                 dataset = task.get_dataset()
 
-                # TODO: maybe not modify categorical features??
                 X, y, categorical_indicator, _ = dataset.get_data(
                     dataset_format='array',
                     target=dataset.default_target_attribute
                 )
 
-                test_percentage = 0.2
+                test_percentage = args.test_percentage
                 num_examples = X.shape[0]
 
                 # Skip datasets with more than 2000 features

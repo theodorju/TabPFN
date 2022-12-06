@@ -38,37 +38,39 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
         X_test_tensor.requires_grad = True
 
         # Results dictionary
-        results = {
-            "tabPFN": {
-                "loss": [],
-                "accuracy": [],
-                "X_test": [],
-                "l2_norm": [],
-                "l2_norm_overall": [],
-                "learning_rate": lr,
-                "dataset_name": dataset_name,
-                "prediction": []
-            },
-            "askl2": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "autogluon": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "xgboost": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "mlp": {
-                "accuracy": [],
-                "failed": False,
+        if save_results:
+            results = {
+                "tabPFN": {
+                    "loss": [],
+                    "accuracy": [],
+                    "X_test": [],
+                    "l2_norm": [],
+                    "l2_norm_overall": [],
+                    "learning_rate": lr,
+                    "dataset_name": dataset_name,
+                    "prediction": []
+                },
+                "askl2": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "autogluon": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "xgboost": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "mlp": {
+                    "accuracy": [],
+                    "failed": False,
+                }
             }
-        }
 
         # Instantiate optimizer
         optim = optimizer([X_test_tensor], lr=lr, maximize=True)
+
         print('Applying adversarial attack on {}:'
               '\n \t Optimizer: {}'
               '\n \t Learning Rate: {}'
@@ -143,7 +145,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
     def predict_attack(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
                        normalize_with_test=False, print_every=10, save_results=False, dataset_name=None):
         """
-        AutoML Lab Team Override
+        AutoML Lab Team Override.
         """
 
         # Perform adversarial attack and predict
