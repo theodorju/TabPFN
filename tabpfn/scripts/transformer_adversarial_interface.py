@@ -31,43 +31,46 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
         X = check_array(X, force_all_finite=False)
         # Convert to tensors
         X_train_tensor = torch.from_numpy(self.X_).to(self.device).float()
-        X_test_tensor = torch.from_numpy(X).to(self.device).float()
+        X_test_tensor = torch.from_numpy(X.copy()).to(self.device).float()
 
         # Activate gradient
         X_train_tensor.requires_grad = True
         X_test_tensor.requires_grad = True
 
         # Results dictionary
-        results = {
-            "tabPFN": {
-                "loss": [],
-                "accuracy": [],
-                "X_test": [],
-                "l2_norm": [],
-                "l2_norm_overall": [],
-                "learning_rate": lr,
-                "dataset_name": dataset_name,
-            },
-            "askl2": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "autogluon": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "xgboost": {
-                "accuracy": [],
-                "failed": False,
-            },
-            "mlp": {
-                "accuracy": [],
-                "failed": False,
+        if save_results:
+            results = {
+                "tabPFN": {
+                    "loss": [],
+                    "accuracy": [],
+                    "X_test": [],
+                    "l2_norm": [],
+                    "l2_norm_overall": [],
+                    "learning_rate": lr,
+                    "dataset_name": dataset_name,
+                    "prediction": []
+                },
+                "askl2": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "autogluon": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "xgboost": {
+                    "accuracy": [],
+                    "failed": False,
+                },
+                "mlp": {
+                    "accuracy": [],
+                    "failed": False,
+                }
             }
-        }
 
         # Instantiate optimizer
         optim = optimizer([X_test_tensor], lr=lr, maximize=True)
+
         print('Applying adversarial attack on {}:'
               '\n \t Optimizer: {}'
               '\n \t Learning Rate: {}'
@@ -83,7 +86,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
         eval_pos = self.X_.shape[0]
 
         # initialize to calculate l2-norm on the fly
-        previous_X_test = X
+        previous_X_test = X.copy()
 
         for step in range(0, num_steps + 1):
 
@@ -126,6 +129,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                         np.linalg.norm(X_test_tensor.detach().numpy() - previous_X_test, ord=2))
                     results["tabPFN"]["l2_norm_overall"].append(
                         np.linalg.norm(X_test_tensor.detach().numpy() - X, ord=2))
+                    results["tabPFN"]["prediction"].append(prediction.squeeze(0).detach().numpy())
 
             previous_X_test = X_test_tensor.detach().numpy().copy()
             X_full = torch.concat([X_train_tensor, X_test_tensor], axis=0).float().unsqueeze(1)
@@ -141,7 +145,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
     def predict_attack(self, X, y_test, optimizer, lr, num_steps=250, return_winning_probability=False,
                        normalize_with_test=False, print_every=10, save_results=False, dataset_name=None):
         """
-        AutoML Lab Team Override
+        AutoML Lab Team Override.
         """
 
         # Perform adversarial attack and predict

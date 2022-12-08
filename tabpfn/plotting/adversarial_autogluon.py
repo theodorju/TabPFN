@@ -4,26 +4,39 @@ import argparse
 import pickle
 import pandas as pd
 import numpy as np
-import openml
 
 from autogluon.tabular import TabularPredictor
 from sklearn.metrics import accuracy_score
 from sklearn.datasets import *
 
 
-def run_autogluon_comparison(dataset_name="iris", lr=0.0025):
+def run_autogluon_comparison(
+        dataset_name="iris",
+        lr=0.0025
+) -> None:
+    """
+    Run AutoGluon on all intermediate X_tests generated from TabPFN adversarial attack.
+    Args:
+        dataset_name (str): Name of dataset to run AutoGluon on, used to load X, y arrays. Default: "iris"
+        lr (float): Learning rate used to load the X, y arrays. Default is 0.0025.
 
+    Returns:
+        None
+    """
+
+    # Log performance during execution
     print_every = 4
     print("#" * 30)
     print(f"Dataset: {dataset_name} \nLearning rate: {lr}")
 
+    # Results file
     results_file_path = f'../results/{dataset_name}_results_{lr}.pkl'
 
     # load results dictionary
     with open(results_file_path, 'rb') as f:
         results = pickle.load(f)
 
-    # load necessary arrays
+    # load X, y train and test arrays
     X_train = np.load(f'../results/{dataset_name}_{lr}/X_train.npy')
     y_train = np.load(f'../results/{dataset_name}_{lr}/y_train.npy')
     X_test_clean = np.load(f'../results/{dataset_name}_{lr}/X_test_clean.npy')

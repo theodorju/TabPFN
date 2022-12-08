@@ -1,3 +1,4 @@
+"""Perform a single prediction using adversarial dataset on AutoGluon classifier."""
 import numpy as np
 from autogluon.tabular import TabularDataset, TabularPredictor
 from sklearn.metrics import accuracy_score
