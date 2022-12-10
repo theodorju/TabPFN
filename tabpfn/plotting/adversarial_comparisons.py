@@ -263,74 +263,60 @@ if __name__ == "__main__":
     # TabPFN current limit is 1000 examples
     tabpfn_limit = 1000
 
-    if is_openml:
+    openml_dataset_id = args.openml_datasets
 
-        openml_dataset_id = args.openml_datasets
+    for task_id in openml_dataset_id:
+        try:
+            print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
 
-        for task_id in openml_dataset_id:
-            try:
-                print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
+            task = openml.tasks.get_task(task_id, download_data=True)
+            dataset = task.get_dataset()
 
-                task = openml.tasks.get_task(task_id, download_data=True)
-                dataset = task.get_dataset()
+            X, y, categorical_indicator, _ = dataset.get_data(
+                dataset_format='array',
+                target=dataset.default_target_attribute
+            )
 
-                X, y, categorical_indicator, _ = dataset.get_data(
-                    dataset_format='array',
-                    target=dataset.default_target_attribute
-                )
+            test_percentage = args.test_percentage
+            num_examples = X.shape[0]
 
-                test_percentage = args.test_percentage
-                num_examples = X.shape[0]
+            # Skip datasets with more than 2000 features
+            if num_examples > 2000:
+                continue
 
-                # Skip datasets with more than 2000 features
-                if num_examples > 2000:
-                    continue
+            if num_examples > tabpfn_limit:
+                test_percentage = np.round(1 - tabpfn_limit / num_examples, 2)
 
-                if num_examples > tabpfn_limit:
-                    test_percentage = np.round(1 - tabpfn_limit / num_examples, 2)
-
-                for lr in lrs:
-                    run_comparison(lr,
-                                   num_steps=num_steps,
-                                   X=X, y=y,
-                                   dataset_name=task_id,
-                                   models="all",
-                                   test_percentage=test_percentage
-                                   )
-
-            except Exception as e:
-                print(f"Openml dataset {task_id} failed with error:")
-                print(e)
-
-    else:
-        # Setup
-        datasets_fn = [load_iris, load_breast_cancer, load_digits]
-
-        # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
-        test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
-
-        # Loop over datasets
-        for i, dataset_fn in enumerate(datasets_fn):
-
-            # Loop over learning rates
             for lr in lrs:
+                run_comparison(lr,
+                               num_steps=num_steps,
+                               X=X, y=y,
+                               dataset_name=task_id,
+                               models="all",
+                               test_percentage=test_percentage
+                               )
 
-                # Call for specific dataset
-                if dataset_fn is None:
-                    run_comparison(lr=lr,
-                                   dataset_fn=dataset_fn,
-                                   models='all',
-                                   test_percentage=test_percentage[i],
-                                   num_steps=num_steps,
-                                   dataset_name='titanic'
-                                   )
+        except Exception as e:
+            print(f"Openml dataset {task_id} failed with error:")
+            print(e)
 
-                # Call for sklearn datasets
-                else:
-                    # Run comparison
-                    run_comparison(lr=lr,
-                                   dataset_fn=dataset_fn,
-                                   models='all',
-                                   test_percentage=test_percentage[i],
-                                   num_steps=num_steps
-                                   )
+    # Setup
+    datasets_fn = [load_iris, load_breast_cancer, load_digits]
+
+    # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
+    test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
+
+    # Loop over datasets
+    for i, dataset_fn in enumerate(datasets_fn):
+
+        # Loop over learning rates
+        for lr in lrs:
+            print(dataset_fn, lr)
+            # Call for sklearn datasets
+            # Run comparison
+            run_comparison(lr=lr,
+                           dataset_fn=dataset_fn,
+                           models='all',
+                           test_percentage=test_percentage[i],
+                           num_steps=num_steps
+                           )
