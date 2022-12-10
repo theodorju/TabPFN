@@ -230,7 +230,7 @@ if __name__ == "__main__":
         nargs="*",  # 0 or more values expected => creates a list
         help="OpenML dataset ids to run the attack on",
         type=int,
-        default=[11, 14, 15, 16, 18, 22, 23, 29, 31, 37],
+        default=[11, 14, 15, 16, 18, 22, 29, 37],
     )
 
     parser.add_argument(
@@ -304,7 +304,7 @@ if __name__ == "__main__":
 
     else:
         # Setup
-        datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+        datasets_fn = [load_iris, load_breast_cancer, load_digits]
 
         # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
         test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]

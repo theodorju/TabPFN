@@ -5,6 +5,7 @@ from typing import Tuple
 from sklearn.datasets import *
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from tabpfn.scripts.transformer_adversarial_interface import AdversarialTabPFNClassifier
 
 
@@ -132,6 +133,10 @@ class AdversarialTabPFNInterface:
         if dataset_fn:
             # Populate X, y
             X, y = dataset_fn(return_X_y=True)
+
+        scaler = StandardScaler()
+        print("Scaling using StandardScaler:")
+        X = scaler.fit_transform(X)
 
         # Split the dataset
         X_train, X_test, y_train, y_test = \

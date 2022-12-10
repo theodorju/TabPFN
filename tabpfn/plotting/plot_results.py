@@ -44,7 +44,8 @@ dataset_features_num_dict = {
 }
 
 # Merge datasets
-datasets = datasets_sk + datasets_open
+#datasets = datasets_sk + datasets_open
+datasets = list(dataset_features_num_dict.keys())
 
 # Learning rates used in the experiments
 lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
@@ -207,7 +208,8 @@ def plot_norm_vs_acc_diff_num_features(
         outer_loop,
         outer_is_dataset,
         range_=None,
-        l2_norm=False
+        l2_norm=False,
+        normalize = True,
 ) -> None:
     """
 
@@ -225,6 +227,7 @@ def plot_norm_vs_acc_diff_num_features(
 
     # colours list
     colours_ = list(mcolors.TABLEAU_COLORS.keys()) + ['darkblue', 'darkslategray']
+    colours_ = [(0.2,0.3,0.9,0.09*i)  for i,_ in enumerate(datasets)]
 
     # Populate dictionary with colours and extract number of columns if outer_loop is a list of datasets
     if outer_is_dataset:
@@ -257,8 +260,9 @@ def plot_norm_vs_acc_diff_num_features(
             else:
                 dataset_name = inner
                 accs_file_path = f'{dir}{dataset_name}_results_{outer}.pkl'
-                sub_plot_label = f"{open_ml_name_dict[dataset_name]} (ID {dataset_name})" if dataset_name.isdigit() \
-                    else f"{dataset_name}"
+                sub_plot_label = f"{open_ml_name_dict[dataset_name]}(#{dataset_features_num_dict[dataset_name]})" if \
+                    dataset_name.isdigit() \
+                    else f"{dataset_name}(#{dataset_features_num_dict[dataset_name]})"
                 sub_plot_title = f'lr:= {outer}'
 
             try:
@@ -270,9 +274,20 @@ def plot_norm_vs_acc_diff_num_features(
 
             # Get the L2 overall norm for TabPFN. The L2 norm is calculated during experiment execution as
             # the difference of the features at a specific time step of gradient ascent to the initial features.
-            x_norm = results_dict['tabPFN']['l2_norm_overall']
-            x_steps = list(range_) if range_ else results_dict['tabPFN']['l2_norm_overall']
-
+            if normalize:
+                X_original = results_dict['tabPFN']['X_test'][0]
+                X_mean = np.mean(X_original)
+                X_std = np.std(X_original)
+                X_normalized = (X_original - X_mean)/X_std
+                l2_norms_normalized = [np.linalg.norm((x_test - np.mean(x_test))/np.std(x_test) - X_normalized) for
+                                       x_test in
+                                       results_dict['tabPFN']['X_test']]
+                #l2_norms_normalized_rescaled =  (l2_norms_normalized - min(l2_norms_normalized)) / (max(
+                    #l2_norms_normalized) - min(l2_norms_normalized))
+            if range_:
+                x_steps = list(range_)
+            else:
+                x_steps = results_dict['tabPFN']['l2_norm_overall'] if not normalize else l2_norms_normalized
             y = results_dict['tabPFN']['accuracy']
 
             # Axis formatting based on l2_norm
@@ -289,6 +304,8 @@ def plot_norm_vs_acc_diff_num_features(
                 axs[i].plot(x_steps, y, color=colours[inner], label=sub_plot_label)
                 axs[i].yaxis.set_tick_params(labelbottom=True)
                 axs[i].set_title(sub_plot_title)
+                if i ==0:
+                    axs[i].set_ylabel('Accuracy')
                 axs[i].grid()
 
         # Text formatting based on l2_norm
@@ -450,7 +467,7 @@ def plot_tab_no_attack() -> None:
     plt.show()
 
 
-def corr_between_features_breakability() -> None:
+def corr_between_features_breakability(scatter=True) -> None:
     """
     Create a horizontal bar plot showing the negative correlation and p-values between the features and the drop in
     accuracy on TabPFN. The datasets are ordered in ascending number of features.
@@ -494,24 +511,29 @@ def corr_between_features_breakability() -> None:
               f'Corr:{rho}, pval: {p_val}')
 
     fig, ax = plt.subplots(figsize=(24, 18))
-    x_axis = [f"{dataset_name}\n({dataset_features_num_dict[dataset_name]})" for dataset_name in dataset_]
     y_axis = corrs
+    if scatter:
+        x_axis = [dataset_features_num_dict[dataset_name] for dataset_name in dataset_]
+        plt.scatter(x_axis,y_axis)
+        plt.xlabel('Number of Features')
+        plt.ylabel('Spearman Correlation Score')
+    else:
+        x_axis = [f"{dataset_name}\n({dataset_features_num_dict[dataset_name]})" for dataset_name in dataset_]
+        bars = ax.barh(x_axis, y_axis, color="#004a97", alpha=0.7)
+        ax.invert_yaxis()
+        ax.invert_xaxis()
+        ax.set_ylabel("Datasets (#features)")
+        ax.set_xlabel("Spearman Correlation Score")
+        ax.set_xlim([-0.4, -1.05])
 
-    bars = ax.barh(x_axis, y_axis, color="#004a97", alpha=0.7)
-    ax.invert_yaxis()
-    ax.invert_xaxis()
-    ax.set_ylabel("Datasets (#features)")
-    ax.set_xlabel("Spearman Correlation Score")
-    ax.set_xlim([-0.4, -1.05])
-
-    # To get data labels
-    for i, bar in enumerate(bars):
-        label_y = bar.get_y() + bar.get_height() / 2
-        plt.text(-0.65, label_y, s='pval = {:.2E}'.format(pvals[i]), color="white")
+        # To get data labels
+        for i, bar in enumerate(bars):
+            label_y = bar.get_y() + bar.get_height() / 2
+            plt.text(-0.65, label_y, s='pval = {:.2E}'.format(pvals[i]), color="white")
     plt.show()
 
 
-def features_vs_corr() -> None:
+def features_vs_corr(only_cat = False) -> None:
     """
     Create an interactive bar chart showing the correlation between the number of features and the drop in accuracy on
     TabPFN using plotly. Features are divided based on their type.
@@ -526,11 +548,21 @@ def features_vs_corr() -> None:
     # Cast number of features to int and correlation to float
     df['val'] = df['val'].astype(int)
     df['corr'] = df['corr'].astype('float')
+    if only_cat:
+        df = df[df['type'] == 'numerical']
+    else:
+        df = df[df['type'] =='features']
+    x_axis = df['val'].values
+    y_axis = df['corr'].values
+    rho, p_val = stats.spearmanr(x_axis, y_axis)
+    print(rho,p_val)
 
-    # Sort values bassed on correlation
-    df = df.sort_values(by=['corr'])
-    fig = px.bar(df, x="name", y="val", color='type', barmode='group')
-    fig.show()
+    plt.scatter(x_axis,y_axis, alpha=0.8)
+    plt.ylim([0.7,1])
+    plt.xlabel('Number of Features' if not only_cat else 'Number of Categorical Features')
+    plt.ylabel('Negative Spearman Correlation Score')
+    plt.grid(True)
+    plt.show()
 
 
 # plot_num_steps_vs_norm(range(0, 101, 4))
@@ -540,14 +572,15 @@ def features_vs_corr() -> None:
 #                              y_axis="accuracy",
 #                              fig_title="TabPFN vs Other Models")
 #
-# plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
-#                                    inner_loop=datasets,
-#                                    outer_is_dataset=False,
-#                                    l2_norm=False)
+plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
+                                    inner_loop=datasets,
+                                    outer_is_dataset=False,
+                                    l2_norm=False,
+                                   normalize=True)
 # plot_tab_no_attack()
 #
 # corr_between_features_breakability()
 #
 # plot_norm_vs_acc_all_datasets()
 #
-# features_vs_corr()
+#features_vs_corr(only_cat=True)
