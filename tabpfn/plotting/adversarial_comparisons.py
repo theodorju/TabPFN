@@ -292,7 +292,7 @@ if __name__ == "__main__":
                                num_steps=num_steps,
                                X=X, y=y,
                                dataset_name=task_id,
-                               models="all",
+                               models="none",
                                test_percentage=test_percentage
                                )
 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
             # Run comparison
             run_comparison(lr=lr,
                            dataset_fn=dataset_fn,
-                           models='all',
+                           models='none',
                            test_percentage=test_percentage[i],
                            num_steps=num_steps
                            )
