@@ -8,6 +8,7 @@ import numpy as np
 import plotly.express as px
 from scipy import stats
 from plotting_globals import spearman_corr_df
+from matplotlib.patches import Polygon
 
 # SKLearn datasets
 datasets_sk = ['iris', "breast_cancer", "digits", 'titanic']
@@ -466,7 +467,110 @@ def plot_tab_no_attack() -> None:
     plt.title('TabPFN Accuracy vs Other Models')
     plt.show()
 
+def box_plot_diff_lr():
+    data = []
+    datasets_taken = []
+    for j, dataset_name in enumerate(datasets):
+        data_norms = []
+        data_accs = []
+        for i, lr in enumerate(lrs):
+            accs_file_path = f'{dir}{dataset_name}_results_{lr}.pkl'
+            try:
+                with open(accs_file_path, 'rb') as f:
+                    results_dict = pickle.load(f)
 
+            except Exception:
+                continue
+            l1_norm = results_dict['tabPFN']['l1_norm_overall'][-1]
+            data_norms.append(l1_norm)
+            acc = results_dict['tabPFN']['accuracy'][-1]
+            data_accs.append(acc)
+        if len(data_norms)==0:
+            continue
+        datasets_taken.extend([dataset_name+'\nl1norm\n('+str(dataset_features_num_dict[dataset_name])+')',dataset_name+'\nacc\n('+str(dataset_features_num_dict[dataset_name])+')'])
+        data_norms = (data_norms - min(data_norms)) / (max(data_norms) - min(data_norms))
+        data.extend([data_norms,data_accs])
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    fig.subplots_adjust(left=0.075, right=0.95, top=0.9, bottom=0.25)
+
+    bp = ax1.boxplot(data, notch=False, sym='+', vert=True, whis=1.5)
+    plt.setp(bp['boxes'], color='black')
+    plt.setp(bp['whiskers'], color='black')
+    plt.setp(bp['fliers'], color='red', marker='+')
+
+    # Add a horizontal grid to the plot, but make it very light in color
+    # so we can use it for reading data values but not be distracting
+    ax1.yaxis.grid(True, linestyle='-', which='major', color='lightgrey',
+                   alpha=0.5)
+
+    ax1.set(
+        axisbelow=True,  # Hide the grid behind plot objects
+        title='Average Distance per Feature Attack and Accuracy for Different lrs',
+        xlabel='Datasets',
+        ylabel='Value',
+    )
+    # Now fill the boxes with desired colors
+    box_colors = ['darkkhaki', 'royalblue']
+    num_boxes = len(data)
+    medians = np.empty(num_boxes)
+    for i in range(num_boxes):
+        box = bp['boxes'][i]
+        box_x = []
+        box_y = []
+        for j in range(5):
+            box_x.append(box.get_xdata()[j])
+            box_y.append(box.get_ydata()[j])
+        box_coords = np.column_stack([box_x, box_y])
+        # Alternate between Dark Khaki and Royal Blue
+        ax1.add_patch(Polygon(box_coords, facecolor=box_colors[i % 2]))
+        # Now draw the median lines back over what we just filled in
+        med = bp['medians'][i]
+        median_x = []
+        median_y = []
+        for j in range(2):
+            median_x.append(med.get_xdata()[j])
+            median_y.append(med.get_ydata()[j])
+            ax1.plot(median_x, median_y, 'k')
+        medians[i] = median_y[0]
+        # Finally, overplot the sample averages, with horizontal alignment
+        # in the center of each box
+        ax1.plot(np.average(med.get_xdata()), np.average(data[i]),
+                 color='w', marker='*', markeredgecolor='k')
+
+    # Set the axes ranges and axes labels
+    ax1.set_xlim(0.5, num_boxes + 0.5)
+    top = np.max(data)
+    bottom = np.min(data)
+    ax1.set_ylim(bottom, top)
+    ax1.set_xticklabels(datasets_taken,
+                        rotation=45, fontsize=8)
+
+    # Due to the Y-axis scale being different across samples, it can be
+    # hard to compare differences in medians across the samples. Add upper
+    # X-axis tick labels with the sample medians to aid in comparison
+    # (just use two decimal places of precision)
+    pos = np.arange(num_boxes) + 1
+    upper_labels = [str(round(s, 2)) for s in medians]
+    weights = ['bold', 'semibold']
+    for tick, label in zip(range(num_boxes), ax1.get_xticklabels()):
+        k = tick % 2
+        ax1.text(pos[tick], .95, upper_labels[tick],
+                 transform=ax1.get_xaxis_transform(),
+                 horizontalalignment='center', size='x-small',
+                 weight=weights[k], color=box_colors[k])
+    # Finally, add a basic legend
+    fig.text(0.80, 0.08, f'Avg distance per feature after 100 steps for different lrs',
+             backgroundcolor=box_colors[0], color='black', weight='roman',
+             size='x-small')
+    fig.text(0.80, 0.045, 'Accuracy after 100 steps for different lrs',
+             backgroundcolor=box_colors[1],
+             color='white', weight='roman', size='x-small')
+    fig.text(0.80, 0.015, '*', color='white', backgroundcolor='silver',
+             weight='roman', size='medium')
+    fig.text(0.815, 0.013, ' Average Value', color='black', weight='roman',
+             size='x-small')
+
+    plt.show()
 def corr_between_features_breakability(scatter=True) -> None:
     """
     Create a horizontal bar plot showing the negative correlation and p-values between the features and the drop in
@@ -572,11 +676,11 @@ def features_vs_corr(only_cat = False) -> None:
 #                              y_axis="accuracy",
 #                              fig_title="TabPFN vs Other Models")
 #
-plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
-                                    inner_loop=datasets,
-                                    outer_is_dataset=False,
-                                    l2_norm=False,
-                                   normalize=True)
+#plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
+#                                    inner_loop=datasets,
+#                                    outer_is_dataset=False,
+#                                    l2_norm=False,
+#                                   normalize=True)
 # plot_tab_no_attack()
 #
 # corr_between_features_breakability()
@@ -584,3 +688,4 @@ plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
 # plot_norm_vs_acc_all_datasets()
 #
 #features_vs_corr(only_cat=True)
+box_plot_diff_lr()
