@@ -99,7 +99,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     is_openml = args.openml
 
-    datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+    datasets_fn = [load_iris, load_breast_cancer, load_digits]
     lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
 
     if is_openml:
