@@ -212,7 +212,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "-o",
         "--openml",
-        help="Run comparison on automl datasets",
+        help="Run comparison on automl datasets. If not specified, run on sklearn datasets.",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "-f",
+        "--full",
+        help="Run comparison on all default datasets used in the poster (sklearn and openml)",
         action="store_true",
     )
 
@@ -230,7 +237,7 @@ if __name__ == "__main__":
         nargs="*",  # 0 or more values expected => creates a list
         help="OpenML dataset ids to run the attack on",
         type=int,
-        default=[11, 14, 15, 16, 18, 22, 23, 29, 31, 37],
+        default=[11, 14, 15, 16, 18, 22, 29, 37],
     )
 
     parser.add_argument(
@@ -253,6 +260,7 @@ if __name__ == "__main__":
     # Parse arguments
     args = parser.parse_args()
     is_openml = args.openml
+    full = args.full
 
     # Number of adversarial attack steps
     num_steps = args.number_of_steps
@@ -263,10 +271,8 @@ if __name__ == "__main__":
     # TabPFN current limit is 1000 examples
     tabpfn_limit = 1000
 
-    if is_openml:
-
-        openml_dataset_id = args.openml_datasets
-
+    openml_dataset_id = args.openml_datasets
+    if is_openml or full:
         for task_id in openml_dataset_id:
             try:
                 print(f"Starting adversarial comparisons for openml dataset: {task_id}...")
@@ -302,35 +308,23 @@ if __name__ == "__main__":
                 print(f"Openml dataset {task_id} failed with error:")
                 print(e)
 
-    else:
+    if (not is_openml) or full:
         # Setup
-        datasets_fn = [load_iris, load_breast_cancer, load_digits, None]
+        datasets_fn = [load_iris, load_breast_cancer, load_digits]
 
         # Digits requires different test percentage to result in 1000 training examples due to TabPFN restrictions
-        test_percentage = [0.2, 0.2, 0.4435, 0.2, 0.2]
+        test_percentage = [0.2, 0.2, 0.4435]
 
         # Loop over datasets
         for i, dataset_fn in enumerate(datasets_fn):
 
             # Loop over learning rates
             for lr in lrs:
-
-                # Call for specific dataset
-                if dataset_fn is None:
-                    run_comparison(lr=lr,
-                                   dataset_fn=dataset_fn,
-                                   models='all',
-                                   test_percentage=test_percentage[i],
-                                   num_steps=num_steps,
-                                   dataset_name='titanic'
-                                   )
-
                 # Call for sklearn datasets
-                else:
-                    # Run comparison
-                    run_comparison(lr=lr,
-                                   dataset_fn=dataset_fn,
-                                   models='all',
-                                   test_percentage=test_percentage[i],
-                                   num_steps=num_steps
-                                   )
+                # Run comparison
+                run_comparison(lr=lr,
+                               dataset_fn=dataset_fn,
+                               models='all',
+                               test_percentage=test_percentage[i],
+                               num_steps=num_steps
+                               )

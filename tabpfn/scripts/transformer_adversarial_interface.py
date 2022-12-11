@@ -46,6 +46,7 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                     "X_test": [],
                     "l2_norm": [],
                     "l2_norm_overall": [],
+                    "l1_norm_overall": [],
                     "learning_rate": lr,
                     "dataset_name": dataset_name,
                     "prediction": []
@@ -129,6 +130,9 @@ class AdversarialTabPFNClassifier(TabPFNClassifier):
                         np.linalg.norm(X_test_tensor.detach().numpy() - previous_X_test, ord=2))
                     results["tabPFN"]["l2_norm_overall"].append(
                         np.linalg.norm(X_test_tensor.detach().numpy() - X, ord=2))
+                    l1_norm = np.abs(X_test_tensor.detach().numpy() - X)
+                    l1_norm_mean = np.mean(l1_norm)
+                    results["tabPFN"]["l1_norm_overall"].append(l1_norm_mean)
                     results["tabPFN"]["prediction"].append(prediction.squeeze(0).detach().numpy())
 
             previous_X_test = X_test_tensor.detach().numpy().copy()
