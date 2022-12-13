@@ -1,69 +1,24 @@
+"""
+L1 scaled results tabpfn: https://drive.google.com/file/d/1gwzfkAVBCkbitCK-1nB1T0vKfT_wBAoL/view?usp=share_link
+    - download and extract as tabpfn/results_l1-tabpfn_only
+
+L2 results with baselines: https://drive.google.com/file/d/1r2LF4TCfELdarhRl3RxhAKldEVNWqaCv/view?usp=share_link
+    - download and extract as tabpfn/results_l2-poster
+"""
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import matplotlib.ticker as mtick
-import numpy as np
 
-import plotly.express as px
 from scipy import stats
-from plotting_globals import spearman_corr_df
 from matplotlib.patches import Polygon
+from plotting_globals import *
 
-fontsizes = {'title': 24, 'label': 16, 'legend_title': 18, 'subplot_title': 18, 'ticklabel': 16}
-
-# SKLearn datasets
-datasets_sk = ["breast_cancer"]
-
-# OpenML datasets (tabpfn crashed on 14, 29)
-datasets_open = ["11", '16', '22', '37', '14']
-# datasets_open_full_results = ['11','16','22','31']
-
-open_ml_name_dict = {
-    '11': 'balance-scale',
-    '18': 'mfeat-morphological',
-    '16': 'mfeat-karhunen',
-    '22': 'mfeat-zernike',
-    '31': 'credit-g',
-    '37': 'diabetes',
-    '23': 'cmc',
-    '14': 'mfeat-fourier'
-}
-
-# Dataset feature mapping
-dataset_features_num_dict = {
-    'iris': 4,
-    '11': 4,
-    '18': 6,
-    '37': 8,
-    'breast_cancer': 10,
-    '23': 9,
-    'titanic': 12,
-    '31': 20,
-    '22': 47,
-    'digits': 64,
-    '16': 64,
-    '14': 76,
-}
-
-# Merge datasets
-datasets = datasets_sk + datasets_open
-# datasets = list(dataset_features_num_dict.keys())
-
-# Learning rates used in the experiments
-lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
-lrs = [0.005, 0.01]
 # Baseline models
 models = ['tabPFN', 'askl2', 'autogluon', 'xgboost', 'mlp']
 
-axis_titles = {
-    "l2_norm_overall": " L2 norm of (X_attacked - X_original) ",
-    "accuracy": "Accuracy",
-    "range": "Number of steps"
-}
-
 # Results directory
-#dir = '../results/'
+# dir = '../results/'
 dir = '../results_l2-poster/'
 
 # Colors used in the plots (chosen to be colorblind friendly)
@@ -90,6 +45,18 @@ def plot_norm_vs_acc_diff_models(
         None
     """
 
+    axis_titles = {
+        "l2_norm_overall": " L2 norm of (X_attacked - X_original) ",
+        "accuracy": "Accuracy",
+        "range": "Number of steps"
+    }
+
+    # Poster learning rates for this plot
+    lrs = [0.005, 0.01]
+
+    # Poster datasets for this plot
+    datasets = ["breast_cancer", "11", "16", "22", "37", "14"]
+
     # Create necessary colors dictionary
     colours = {k: colours_[i] for i, k in enumerate(models)}
 
@@ -101,7 +68,7 @@ def plot_norm_vs_acc_diff_models(
         # Loop over datasets
         for j, dataset_name in enumerate(datasets):
 
-            # Set axes format to 2-floating poins
+            # Set axes format to 2-floating points
             axs[i, j].yaxis.set_major_formatter(mtick.FormatStrFormatter('%.2f'))
             axs[i, j].xaxis.set_major_formatter(mtick.FormatStrFormatter('%.2f'))
 
@@ -113,7 +80,7 @@ def plot_norm_vs_acc_diff_models(
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
                 print(f"No results file for dataset: {dataset_name} on learning rate: {lr}.")
                 continue
 
@@ -170,7 +137,6 @@ def plot_norm_vs_acc_diff_models(
                     axs[i, j].plot(x, y, color=colours[model_name], label=model_name)
                     axs[i, j].axhline(y=0.5, linestyle='--', linewidth=2, color='grey')
 
-
             # Display dataset name for the top plots
             if i == 0:
                 axs[i, j].set_title(
@@ -199,9 +165,11 @@ def plot_norm_vs_acc_diff_models(
     handles, labels = fig.axes[0].get_legend_handles_labels()
 
     # Reposition legend
-    legend = fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.99, 0.62), title='Models',fontsize=16,)
+    legend = fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.99, 0.62), title='Models', fontsize=16,)
     plt.setp(legend.get_title(), fontsize='18')
-    plt.savefig('tabpfn_vs_baselines_l2_norm_dpi_600.png', dpi=600)
+
+    # Used to get high resolution plot for the poster
+    # plt.savefig('tabpfn_vs_baselines_l2_norm_dpi_600.png', dpi=600)
     plt.show()
 
 
@@ -211,7 +179,7 @@ def plot_norm_vs_acc_diff_num_features(
         outer_is_dataset,
         range_=None,
         l2_norm=False,
-        normalize = True,
+        normalize = True
 ) -> None:
     """
 
@@ -222,14 +190,18 @@ def plot_norm_vs_acc_diff_num_features(
             False if outer_loop is a list of learning rates.
         range_ (range): Range of number of features to plot.
         l2_norm (bool): True if l2-norm is used in x-axis, False if number of features is used in x-axis.
+        normalize (bool): True if the results should be normalized, False otherwise.
 
     Returns:
         None
     """
 
-    # colours list
-    colours_ = list(mcolors.TABLEAU_COLORS.keys()) + ['darkblue', 'darkslategray']
-    colours_ = [(0.2,0.3,0.9,0.09*i)  for i,_ in enumerate(datasets)]
+    lrs = [0.005, 0.01]
+    datasets = list(dataset_features_num_dict.keys())
+
+    # colours list we considered both choices, not sure which looks best
+    # colours_ = list(mcolors.TABLEAU_COLORS.keys()) + ['darkblue', 'darkslategray']
+    colours_ = [(0.2, 0.3, 0.9, 0.09 * i) for i, _ in enumerate(datasets)]
 
     # Populate dictionary with colours and extract number of columns if outer_loop is a list of datasets
     if outer_is_dataset:
@@ -271,7 +243,7 @@ def plot_norm_vs_acc_diff_num_features(
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
                 continue
 
             # Get the L2 overall norm for TabPFN. The L2 norm is calculated during experiment execution as
@@ -284,6 +256,7 @@ def plot_norm_vs_acc_diff_num_features(
                 l2_norms_normalized = [np.linalg.norm((x_test - np.mean(x_test))/np.std(x_test) - X_normalized) for
                                        x_test in
                                        results_dict['tabPFN']['X_test']]
+                # L2 normalized and rescaled (not used)
                 #l2_norms_normalized_rescaled =  (l2_norms_normalized - min(l2_norms_normalized)) / (max(
                     #l2_norms_normalized) - min(l2_norms_normalized))
             if range_:
@@ -298,7 +271,7 @@ def plot_norm_vs_acc_diff_num_features(
                 axs[0, i].set_title(sub_plot_title)
                 axs[0, i].set_ylabel("accuracy")
                 axs[0, i].grid()
-                axs[1, i].plot(x_steps, x_norm, color=colours[inner], label=sub_plot_label)
+                axs[1, i].plot(x_steps, l2_norm, color=colours[inner], label=sub_plot_label)
                 axs[1, i].set_title(sub_plot_title)
                 axs[1, i].set_ylabel("l2 norm")
                 axs[1, i].grid()
@@ -306,7 +279,7 @@ def plot_norm_vs_acc_diff_num_features(
                 axs[i].plot(x_steps, y, color=colours[inner], label=sub_plot_label)
                 axs[i].yaxis.set_tick_params(labelbottom=True)
                 axs[i].set_title(sub_plot_title)
-                if i ==0:
+                if i == 0:
                     axs[i].set_ylabel('Accuracy')
                 axs[i].grid()
 
@@ -326,7 +299,7 @@ def plot_norm_vs_acc_diff_num_features(
 
 def plot_num_steps_vs_norm(range_) -> None:
     """
-    Plot the L2 norm of the features at each time step of gradient ascent for TabPFN.
+    Plot the L2 norm of the features at each time step of gradient ascent for TabPFN for five OpenML datasets.
     Args:
         range_ (range): number of steps to plot
 
@@ -334,10 +307,13 @@ def plot_num_steps_vs_norm(range_) -> None:
         None
     """
 
+    datasets = ["11", '16', '22', '37', '14']
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+
     # colours dictionary
     colours = {k: colours_[i] for i, k in enumerate(lrs)}
 
-    fig, axs = plt.subplots(nrows=1, ncols=len(datasets), figsize=(20, 16), sharey="all")
+    fig, axs = plt.subplots(nrows=1, ncols=len(datasets), figsize=(12, 6), sharey="all")
 
     # Loop over datasets and learning rates
     for i, dataset_name in enumerate(datasets):
@@ -348,7 +324,8 @@ def plot_num_steps_vs_norm(range_) -> None:
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
+                print(f"File not found: {accs_file_path}.")
                 continue
 
             x_steps = list(range_)
@@ -375,10 +352,17 @@ def plot_num_steps_vs_norm(range_) -> None:
     plt.show()
 
 
-def plot_norm_vs_acc_all_datasets() -> None:
+def plot_norm_vs_acc_all_datasets(
+        lrs=(0.005,),
+        datasets=("iris", "breast_cancer", "11", "16", "22", "37", "14")
+) -> None:
     """
     Plot the accuracy of TabPFN and any successfully executed pipelines against the L2 norm of the features at each time
     step of gradient ascent for TabPFN.
+
+    Args:
+        lrs (tuple): learning rates to include in the plot
+        datasets (tuple): datasets to include in the plot
 
     Returns:
         None
@@ -397,7 +381,7 @@ def plot_norm_vs_acc_all_datasets() -> None:
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
                 continue
 
             # The experiments were executed for 100 steps of gradient ascent with the results being saved every 4 steps.
@@ -428,18 +412,24 @@ def plot_norm_vs_acc_all_datasets() -> None:
 
 def plot_tab_no_attack() -> None:
     """
-    Plot the accuracy against the baselines on the original datasets.
+    Plots the accuracy against the baselines on five OpenML datasets.
 
     Returns:
         None
     """
 
+    # Markers because models fall on top of each other for some datasets
+    markers = ["*", "v", "P", "X", "D"]
+
+    datasets = ["11", '16', '22', '37', '14']
+
     # Colors dictionary
     colours = {k: colours_[i] for i, k in enumerate(models)}
 
-    _, _ = plt.subplots(nrows=len(lrs), ncols=len(datasets), figsize=(20, 16))
+    fig, ax = plt.subplots(nrows=1, ncols=len(datasets), figsize=(12, 6))
 
     for j, dataset_name in enumerate(datasets):
+        print(f"Dataset: {dataset_name}")
 
         # Learning rate does not matter here since we are plotting at step zero (no attack yet)
         accs_file_path = f'{dir}{dataset_name}_results_{0.005}.pkl'
@@ -447,7 +437,8 @@ def plot_tab_no_attack() -> None:
             with open(accs_file_path, 'rb') as f:
                 results_dict = pickle.load(f)
 
-        except Exception:
+        except FileNotFoundError:
+            print(f"No file found for {dataset_name}.")
             continue
 
         # Get the accuracy of TabPFN before any attack takes place
@@ -456,44 +447,70 @@ def plot_tab_no_attack() -> None:
         # Accuracies of baselines
         for i, model_name in enumerate(models):
             y = results_dict[model_name]['accuracy'][0]
-            print(f"{model_name}: {np.round(y, 2)}")
+            print(f"\t{model_name}: {np.round(y, 2)}")
 
-            if j == 0:
-                plt.scatter([x], [y], color=colours[model_name], label=model_name)
-            else:
-                plt.scatter([x], [y], color=colours[model_name])
-        plt.plot([0, 1], [0, 1], linestyle="--", linewidth=2, color='grey')
+            ax[j].scatter([x], [y], color=colours[model_name], label=model_name, marker=markers[i])
 
-    plt.legend(loc='upper right', bbox_to_anchor=(0.96, 0.96))
-    plt.title('TabPFN Accuracy vs Other Models')
+        ax[j].grid(True)
+        ax[j].plot([0, 1], [0, 1], linestyle="--", linewidth=2, color='grey')
+
+    plt.legend(loc='best')
+    fig.suptitle('TabPFN Accuracy vs Other Models')
     plt.show()
 
-def box_plot_diff_lr():
+
+def box_plot_diff_lr() -> None:
+    """
+    Create a box plot of the average absolute feature distance (L1-norm) between the original dataset and attacked
+    dataset after 100 steps aggregate across learning rates, also plot the average accuracy of TabPFN for different
+    learning rates.
+
+    The x-axis of the plot is ordered based on the number of features in each dataset. The plot also displays the
+    median values and average accuracy.
+
+    Returns:
+        None
+    """
+
+    # Poster learning rates for this plot
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+
+    # Poster directory with L1-Norm only for TabPFN for this plot
+    dir = '../results_l1-tabpfn_only/'
+
+    # Poster datasets for this plot
+    datasets = list(dataset_features_num_dict.keys())
+
     data = []
     datasets_taken = []
+
     for j, dataset_name in enumerate(datasets):
         data_norms = []
         data_accs = []
         for i, lr in enumerate(lrs):
             accs_file_path = f'{dir}{dataset_name}_results_{lr}.pkl'
+
             try:
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
+                print(f"File not found for {dataset_name} and lr {lr}")
                 continue
+
             l1_norm = results_dict['tabPFN']['l1_norm_overall'][-1]
             data_norms.append(l1_norm)
             acc = results_dict['tabPFN']['accuracy'][-1]
             data_accs.append(acc)
-        if len(data_norms)==0:
+
+        if len(data_norms) == 0:
             continue
         name = f"{open_ml_name_dict[dataset_name]}" if dataset_name.isdigit() else f"{dataset_name}"
-        x_label_title_1 = name+'\nL1-Norm\n('+str(dataset_features_num_dict[dataset_name])+')'
-        x_label_title_2 = name+'\nAcc.\n('+str(dataset_features_num_dict[dataset_name])+')'
-        datasets_taken.extend([x_label_title_1,x_label_title_2])
+        x_label_title_1 = name + '\nL1-Norm\n(' + str(dataset_features_num_dict[dataset_name]) + ')'
+        x_label_title_2 = name + '\nAcc.\n(' + str(dataset_features_num_dict[dataset_name]) + ')'
+        datasets_taken.extend([x_label_title_1, x_label_title_2])
         data_norms = (data_norms - min(data_norms)) / (max(data_norms) - min(data_norms))
-        data.extend([data_norms,data_accs])
+        data.extend([data_norms, data_accs])
 
     fig, ax1 = plt.subplots(figsize=(24, 10))
     fig.subplots_adjust(left=0.075, right=0.95, top=0.9, bottom=0.25)
@@ -505,15 +522,14 @@ def box_plot_diff_lr():
 
     # Add a horizontal grid to the plot, but make it very light in color
     # so we can use it for reading data values but not be distracting
-    ax1.yaxis.grid(True, linestyle='-', which='major', color='lightgrey',
-                   alpha=0.5)
+    ax1.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.5)
 
-    ax1.set(
-        axisbelow=True,  # Hide the grid behind plot objects
-    )
+    # Hide the grid behind plot objects
+    ax1.set(axisbelow=True)
 
     # ax1.set_title('Average Distance per Feature Attack and Accuracy for Different lrs', fontsize=24)
     fig.text(0.5, 0.94, 'Average Feature Distance and Average Accuracy for Different LRs', ha='center', fontsize=24)
+
     # ax1.set_xlabel('Datasets', fontsize=22)
     fig.text(0.5, 0.05, 'Datasets', ha='center', fontsize=22)
     ax1.set_ylabel('Value', fontsize=22)
@@ -529,17 +545,19 @@ def box_plot_diff_lr():
             box_x.append(box.get_xdata()[j])
             box_y.append(box.get_ydata()[j])
         box_coords = np.column_stack([box_x, box_y])
-        # Alternate between Dark Khaki and Royal Blue
+
         ax1.add_patch(Polygon(box_coords, facecolor=box_colors[i % 2]))
         # Now draw the median lines back over what we just filled in
         med = bp['medians'][i]
         median_x = []
         median_y = []
+
         for j in range(2):
             median_x.append(med.get_xdata()[j])
             median_y.append(med.get_ydata()[j])
             ax1.plot(median_x, median_y, 'k')
         medians[i] = median_y[0]
+
         # Finally, overplot the sample averages, with horizontal alignment
         # in the center of each box
         ax1.plot(np.average(med.get_xdata()), np.average(data[i]),
@@ -550,8 +568,7 @@ def box_plot_diff_lr():
     top = np.max(data)
     bottom = np.min(data)
     ax1.set_ylim(bottom, top)
-    ax1.set_xticklabels(datasets_taken,
-                        rotation=45, fontsize=fontsizes['ticklabel'])
+    ax1.set_xticklabels(datasets_taken, rotation=45, fontsize=fontsizes['ticklabel'])
 
     # Due to the Y-axis scale being different across samples, it can be
     # hard to compare differences in medians across the samples. Add upper
@@ -561,11 +578,13 @@ def box_plot_diff_lr():
     upper_labels = [str(round(s, 2)) for s in medians]
     weights = ['bold', 'semibold']
     for tick, label in zip(range(num_boxes), ax1.get_xticklabels()):
+
         k = tick % 2
         ax1.text(pos[tick], .95, upper_labels[tick],
                  transform=ax1.get_xaxis_transform(),
                  horizontalalignment='center', fontsize=18,
                  weight=weights[k], color=box_colors[k])
+
     # Finally, add a basic legend
     fig.text(0.80, 0.08, f'Avg distance per feature after 100 steps',
              backgroundcolor=box_colors[0], color='black', weight='roman',
@@ -577,24 +596,29 @@ def box_plot_diff_lr():
              weight='roman', fontsize=16)
     fig.text(0.815, 0.01, ' Average Value', color='black', weight='roman',
              fontsize=16)
-    plt.savefig('abs_distance_vs_accuracy_different_lrs_dpi_600.png', dpi=600)
+
+    # Used to get high resolution plot for the poster
+    # plt.savefig('abs_distance_vs_accuracy_different_lrs_dpi_600.png', dpi=600)
     plt.show()
+
 
 def corr_between_features_breakability(scatter=True) -> None:
     """
-    Create a horizontal bar plot showing the negative correlation and p-values between the features and the drop in
-    accuracy on TabPFN. The datasets are ordered in ascending number of features.
+    Create a plot showing the negative correlation and p-values between the features and the drop in
+    accuracy on TabPFN.
 
     Returns:
         None
     """
-
+    datasets = ['11', '16', '22', '37', '14', '18', '23'] + ["breast_cancer", "iris", "digits"]
     # Modify font size
     font = {'size': 24}
     matplotlib.rc('font', **font)
 
-    # Datasets containing 4 sklearn and 8 OpenML datasets (detailed experiments were executed on 4 OpenML datasets,
-    # here we included 4 more to try and draw conclusions between L2-norm and accuracy drop correlation)
+    lrs = [0.001, 0.0025, 0.005, 0.01, 0.1]
+
+    # Datasets containing 3 sklearn and 7 OpenML datasets (detailed experiments were executed on 4 OpenML datasets,
+    # here we included 3 more to try and draw conclusions between L2-norm and accuracy drop correlation)
     dataset_ = datasets
     corrs = []
     pvals = []
@@ -611,7 +635,7 @@ def corr_between_features_breakability(scatter=True) -> None:
                 with open(accs_file_path, 'rb') as f:
                     results_dict = pickle.load(f)
 
-            except Exception:
+            except FileNotFoundError:
                 continue
 
             distances.extend(results_dict['tabPFN']['l2_norm_overall'])
@@ -648,7 +672,7 @@ def corr_between_features_breakability(scatter=True) -> None:
 
 def features_vs_corr(only_cat=False) -> None:
     """
-    Create an interactive bar chart showing the correlation between the number of features and the drop in accuracy on
+    Create a scatter plot showing the correlation between the number of features and the drop in accuracy on
     TabPFN using plotly. Features are divided based on their type.
 
     Returns:
@@ -664,37 +688,31 @@ def features_vs_corr(only_cat=False) -> None:
     if only_cat:
         df = df[df['type'] == 'numerical']
     else:
-        df = df[df['type'] =='features']
+        df = df[df['type'] == 'features']
     x_axis = df['val'].values
     y_axis = df['corr'].values
     rho, p_val = stats.spearmanr(x_axis, y_axis)
-    print(rho,p_val)
+    print(rho, p_val)
 
-    plt.scatter(x_axis,y_axis, alpha=0.8)
-    plt.ylim([0.7,1])
+    plt.scatter(x_axis, y_axis, alpha=0.8)
+    plt.ylim([0.7, 1])
     plt.xlabel('Number of Features' if not only_cat else 'Number of Categorical Features')
     plt.ylabel('Negative Spearman Correlation Score')
     plt.grid(True)
     plt.show()
 
 
-# plot_num_steps_vs_norm(range(0, 101, 4))
-#
+plot_norm_vs_acc_diff_num_features(outer_loop=[0.005, 0.01],
+                                   inner_loop=list(dataset_features_num_dict.keys()),
+                                   outer_is_dataset=False,
+                                   l2_norm=False,
+                                   normalize=True)
+box_plot_diff_lr()
 plot_norm_vs_acc_diff_models(range_='accuracyTab',
                              x_axis="l2_norm_overall",
                              y_axis="accuracy",
                              fig_title="TabPFN vs Baselines")
-
-# plot_norm_vs_acc_diff_num_features(outer_loop=lrs,
-#                                     inner_loop=datasets,
-#                                     outer_is_dataset=False,
-#                                     l2_norm=False,
-#                                     normalize=True)
-# plot_tab_no_attack()
-#
-# corr_between_features_breakability()
-#
-# plot_norm_vs_acc_all_datasets()
-#
-#features_vs_corr(only_cat=True)
-# box_plot_diff_lr()
+plot_norm_vs_acc_all_datasets()
+plot_tab_no_attack()
+plot_num_steps_vs_norm(range(0, 101, 4))
+features_vs_corr(only_cat=False)

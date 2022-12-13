@@ -1,6 +1,43 @@
 import numpy as np
 import pandas as pd
 
+fontsizes = {'title': 24, 'label': 16, 'legend_title': 18, 'subplot_title': 18, 'ticklabel': 16}
+
+open_ml_name_dict = {
+    '11': 'balance-scale',
+    '18': 'mfeat-morphological',
+    '16': 'mfeat-karhunen',
+    '22': 'mfeat-zernike',
+    '31': 'credit-g',
+    '37': 'diabetes',
+    '23': 'cmc',
+    '14': 'mfeat-fourier'
+}
+
+# Dataset feature mapping
+dataset_features_num_dict = {
+    'iris': 4,
+    '11': 4,
+    '18': 6,
+    '37': 8,
+    'breast_cancer': 10,
+    '23': 9,
+    'titanic': 12,
+    '31': 20,
+    '22': 47,
+    'digits': 64,
+    '16': 64,
+    '14': 76,
+}
+
+
+# SKLearn datasets
+datasets_sk = ["breast_cancer", "iris"]
+
+# OpenML datasets (tabpfn crashed on 14, 29)
+datasets_open = ["11", '16', '22', '37', '14']
+datasets_open_full_results = ['11', '16', '22', '31']
+
 spearman_corr_df = pd.DataFrame(np.array([['iris', 4, 'features', 0.986],
                                           ['iris', 4, 'numerical', 0.986],
                                           ['iris', 0, 'symbolic', 0.986],
